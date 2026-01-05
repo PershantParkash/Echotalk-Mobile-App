@@ -15,10 +15,14 @@ import { RegisterSteps } from '../../store/user/user.types';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import PhoneVerificationForm from '../register-forms/PhoneVerification'
+import PersonalDetailsForm from '../register-forms/PersonalDetails'
+import EducationForm from '../register-forms/Education'
+import ExperienceForm from '../register-forms/Experience'
+import CertificationForm from '../register-forms/Certification';
 
 export default function RegisterMain() {
   const { currentStep } = useSelector((state: RootState) => state.user);
-
   const renderStep = () => {
     switch (currentStep) {
       case RegisterSteps.AccountType:
@@ -27,16 +31,16 @@ export default function RegisterMain() {
         return <UserType />;
       case RegisterSteps.PhonePassword:
         return <PhoneAndPassword />;
-      // case RegisterSteps.PhoneVerification:
-      //   return <PhoneVerificationForm />;
-      // case RegisterSteps.PersonalDetails:
-      //   return <PersonalDetailsForm />;
-      // case RegisterSteps.Education:
-      //   return <EducationForm />;
-      // case RegisterSteps.Experience:
-      //   return <ExperienceForm />;
-      // case RegisterSteps.Certification:
-      //   return <CertificationForm />;
+      case RegisterSteps.PhoneVerification:
+        return <PhoneVerificationForm />;
+      case RegisterSteps.PersonalDetails:
+        return <PersonalDetailsForm />;
+      case RegisterSteps.Education:
+        return <EducationForm />;
+      case RegisterSteps.Experience:
+        return <ExperienceForm />;
+      case RegisterSteps.Certification:
+        return <CertificationForm />;
       default:
         return <div></div>;
     }
