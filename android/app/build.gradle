@@ -84,6 +84,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        // Add multiDexEnabled for Firebase
+        multiDexEnabled true
     }
     signingConfigs {
         debug {
@@ -116,5 +118,17 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // Import the Firebase BoM
+    implementation platform('com.google.firebase:firebase-bom:34.7.0')
+    
+    // Add Firebase Authentication
+    implementation 'com.google.firebase:firebase-auth'
+    
+    // Optional: Add Firebase Analytics
+    implementation 'com.google.firebase:firebase-analytics'
 }
+
+// Apply Google Services plugin at the bottom
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
+apply plugin: 'com.google.gms.google-services'

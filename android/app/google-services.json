@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "240926077004",
+    "project_id": "echotalk-c3a3b",
+    "storage_bucket": "echotalk-c3a3b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:240926077004:android:1289108a6301dbbdea04e9",
+        "android_client_info": {
+          "package_name": "com.echotalk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDsSvcvebK92QjUdhWxF51yM2xsqdn6sk8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
