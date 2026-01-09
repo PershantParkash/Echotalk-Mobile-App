@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { Text, View, TouchableOpacity, Dimensions, TextInput } from 'react-native';
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  Dimensions,
+  TextInput,
+} from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import {
@@ -15,19 +21,23 @@ const PhoneVerification = () => {
   const { user } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch();
   const handleNext = () => {
-    dispatch(setCurrentStep(RegisterSteps.UserType));
+    dispatch(setCurrentStep(RegisterSteps.Education));
+  };
+
+  const handleBack = () => {
+    dispatch(setCurrentStep(RegisterSteps.PhonePassword));
   };
 
   return (
-     <View className="flex-1 justify-center items-center px-6 bg-white">
+    <View className="flex-1 justify-center items-center px-6 bg-white">
       <View className="w-full max-w-[400px]">
         <View className="mt-4 h-22 justify-center">
-          <MaterialIcons
-            name="arrow-back-ios"
-            size={24}
-            color="#000"
-            className="absolute left-4"
-          />
+          <TouchableOpacity
+            onPress={handleBack}
+            className="absolute left-4 top-1/2 -translate-y-1/2"
+          >
+            <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
+          </TouchableOpacity>
 
           <Text className="text-4xl font-semibold text-center">
             Phone Number Verification
@@ -35,18 +45,19 @@ const PhoneVerification = () => {
         </View>
 
         <Text className="text-base text-gray-600 mt-4 mb-4 text-center">
-         OTP verification code has been sent to your provide mobile number +44******0074
+          OTP verification code has been sent to your provide mobile number
+          +44******0074
         </Text>
- <Text className="text-base font-medium text-gray-700 mb-2">
-              Enter OTP
-            </Text>
+        <Text className="text-base font-medium text-gray-700 mb-2">
+          Enter OTP
+        </Text>
         <TextInput
-        placeholder="Enter your OTP"
-        className='bg-gray-100 py-4 px-4'
+          placeholder="Enter your OTP"
+          className="bg-gray-100 py-4 px-4"
         />
- <Text className="text-xs font-medium text-gray-700 mt-1">
-              Resend Code
-            </Text>
+        <Text className="text-xs font-medium text-gray-700 mt-1">
+          Resend Code
+        </Text>
 
         <TouchableOpacity
           onPress={handleNext}

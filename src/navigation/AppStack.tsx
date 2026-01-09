@@ -5,18 +5,20 @@ import SplashScreen from '../screens/SplashScreen';
 import { RootStackParamList } from './navigation';
 import Login from '../components/auth/Login';
 import Register from '../components/auth/RegisterMain'
+import HomeScreen from '../screens/HomeScreen';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function AppStack() {
   return (
     <Stack.Navigator
-      initialRouteName="Register"
+      initialRouteName="Login"
       screenOptions={{ headerShown: false }}
     >
-      <Stack.Screen name="Home" component={SplashScreen} />
+      <Stack.Screen name="Splash" component={SplashScreen} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="Login" component={Login} />
       <Stack.Screen name="Register" component={Register} />
+      <Stack.Screen name="Home" component={HomeScreen} />
     </Stack.Navigator>
   ); 
 }

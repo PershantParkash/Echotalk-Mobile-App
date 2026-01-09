@@ -18,7 +18,9 @@ import {
   setUpdateAppUserCertification,
 } from '../../store/user/user.actions';
 import { RegisterSteps, UserCertification } from '../../store/user/user.types';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 
@@ -46,10 +48,12 @@ const CertificationForm: React.FC = () => {
   const dispatch = useDispatch();
   const navigation = useNavigation();
   const { user } = useSelector((state: RootState) => state.user);
-  
+
   const [errors, setErrors] = useState<ValidationErrors[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(
+    null,
+  );
 
   const handleAddCertification = (): void => {
     dispatch(
@@ -61,7 +65,7 @@ const CertificationForm: React.FC = () => {
           startDate: null,
           endDate: null,
         },
-      ])
+      ]),
     );
   };
 
@@ -77,12 +81,12 @@ const CertificationForm: React.FC = () => {
             style: 'destructive',
             onPress: () => {
               const updatedList = user.certification.filter(
-                (_: UserCertification, idx: number) => idx !== index
+                (_: UserCertification, idx: number) => idx !== index,
               );
               dispatch(setUpdateAppUserCertification(updatedList));
             },
           },
-        ]
+        ],
       );
     }
   };
@@ -90,7 +94,7 @@ const CertificationForm: React.FC = () => {
   const handleCertificationChange = (
     index: number,
     field: keyof Certification,
-    value: string | Date | null
+    value: string | Date | null,
   ): void => {
     const updatedList = user.certification.map(
       (certification: UserCertification, idx: number) => {
@@ -98,7 +102,7 @@ const CertificationForm: React.FC = () => {
           return { ...certification, [field]: value };
         }
         return certification;
-      }
+      },
     );
     dispatch(setUpdateAppUserCertification(updatedList));
   };
@@ -112,7 +116,10 @@ const CertificationForm: React.FC = () => {
     });
   };
 
-  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date): void => {
+  const handleDateChange = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ): void => {
     if (Platform.OS === 'android') {
       setShowDatePicker(null);
     }
@@ -121,7 +128,7 @@ const CertificationForm: React.FC = () => {
       handleCertificationChange(
         showDatePicker.index,
         showDatePicker.field,
-        selectedDate
+        selectedDate,
       );
     }
   };
@@ -152,14 +159,19 @@ const CertificationForm: React.FC = () => {
         }
 
         return errors;
-      }
+      },
     );
 
     setErrors(tempErrors);
-    return tempErrors.every((error: ValidationErrors) => Object.keys(error).length === 0);
+    return tempErrors.every(
+      (error: ValidationErrors) => Object.keys(error).length === 0,
+    );
   };
 
-  const saveTokens = async (accessToken: string, refreshToken: string): Promise<void> => {
+  const saveTokens = async (
+    accessToken: string,
+    refreshToken: string,
+  ): Promise<void> => {
     try {
       await AsyncStorage.setItem('accessToken', accessToken);
       await AsyncStorage.setItem('refreshToken', refreshToken);
@@ -174,14 +186,17 @@ const CertificationForm: React.FC = () => {
       // Add your API call here
       // const response = await switchToTrainer();
       // await saveTokens(response.accessToken, response.refreshToken);
-      
+
       // Navigate to trainer dashboard
       navigation.reset({
         index: 0,
         routes: [{ name: 'TrainerDashboard' as never }],
       });
     } catch (error: unknown) {
-      Alert.alert('Error', 'Failed to complete registration. Please try again.');
+      Alert.alert(
+        'Error',
+        'Failed to complete registration. Please try again.',
+      );
     } finally {
       setLoading(false);
     }
@@ -199,9 +214,12 @@ const CertificationForm: React.FC = () => {
       // await updateUser({ certifications: user.certification });
       // const response = await switchToTrainer();
       // await saveTokens(response.accessToken, response.refreshToken);
-      
-      Alert.alert('Success', 'Your certification details have been successfully updated.');
-      
+
+      Alert.alert(
+        'Success',
+        'Your certification details have been successfully updated.',
+      );
+
       // Navigate to trainer dashboard
       navigation.reset({
         index: 0,
@@ -210,7 +228,7 @@ const CertificationForm: React.FC = () => {
     } catch (error: unknown) {
       Alert.alert(
         'Error',
-        'An error occurred while updating certification. Please try again later.'
+        'An error occurred while updating certification. Please try again later.',
       );
     } finally {
       setLoading(false);
@@ -222,13 +240,19 @@ const CertificationForm: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-white px-6 pt-6">
+    <View className="flex-1 bg-white px-6">
       {/* Header */}
-      <View className="mb-6">
-        <TouchableOpacity onPress={handleBack} className="mb-4">
+      <View className="mt-4 h-12 justify-center">
+        <TouchableOpacity
+          onPress={handleBack}
+          className="absolute left-4 top-1/2 -translate-y-1/2"
+        >
           <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
         </TouchableOpacity>
-        <Text className="text-3xl font-semibold">Certification</Text>
+
+        <Text className="text-4xl font-semibold text-center">
+          Certification
+        </Text>
       </View>
 
       {/* Scrollable Certification List */}
@@ -237,118 +261,136 @@ const CertificationForm: React.FC = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 20 }}
       >
-        {user?.certification.map((certification: UserCertification, index: number) => (
-          <View key={index} className="mb-6">
-            {/* Certification Header */}
-            <View className="flex-row justify-between items-center mb-3">
-              <Text className="text-sm font-medium text-gray-700">
-                Certification {index + 1}
-              </Text>
-              {index !== 0 && (
-                <TouchableOpacity
-                  onPress={() => handleRemoveCertification(index)}
-                  className="flex-row items-center"
-                >
-                  <Feather name="trash-2" size={14} color="#DC2626" />
-                  <Text className="text-xs font-semibold text-red-600 ml-1">
-                    Remove
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Certification Name Input */}
-            <View className="mb-3">
-              <Text className="text-sm text-gray-700 mb-2">Certification Name</Text>
-              <TextInput
-                value={certification.certificationName}
-                onChangeText={(value: string) =>
-                  handleCertificationChange(index, 'certificationName', value)
-                }
-                placeholder="Certification name"
-                className={`bg-gray-100 px-4 py-3 rounded-lg ${
-                  errors[index]?.certificationName ? 'border border-red-600' : ''
-                }`}
-              />
-              {errors[index]?.certificationName && (
-                <Text className="text-xs text-red-600 mt-1">
-                  {errors[index]?.certificationName}
+        {user?.certification.map(
+          (certification: UserCertification, index: number) => (
+            <View key={index} className="mb-6">
+              {/* Certification Header */}
+              <View className="flex-row justify-between items-center mb-3">
+                <Text className="text-sm font-medium text-gray-700">
+                  Certification {index + 1}
                 </Text>
-              )}
-            </View>
+                {index !== 0 && (
+                  <TouchableOpacity
+                    onPress={() => handleRemoveCertification(index)}
+                    className="flex-row items-center"
+                  >
+                    <Feather name="trash-2" size={14} color="#DC2626" />
+                    <Text className="text-xs font-semibold text-red-600 ml-1">
+                      Remove
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
 
-            {/* Institute Input */}
-            <View className="mb-3">
-              <Text className="text-sm text-gray-700 mb-2">Institute</Text>
-              <TextInput
-                value={certification.institute}
-                onChangeText={(value: string) =>
-                  handleCertificationChange(index, 'institute', value)
-                }
-                placeholder="Institute name"
-                className={`bg-gray-100 px-4 py-3 rounded-lg ${
-                  errors[index]?.institute ? 'border border-red-600' : ''
-                }`}
-              />
-              {errors[index]?.institute && (
-                <Text className="text-xs text-red-600 mt-1">
-                  {errors[index]?.institute}
+              {/* Certification Name Input */}
+              <View className="mb-3">
+                <Text className="text-sm text-gray-700 mb-2">
+                  Certification Name
                 </Text>
-              )}
-            </View>
-
-            {/* Date Inputs */}
-            <View className="flex-row gap-3">
-              {/* Start Date */}
-              <View className="flex-1">
-                <Text className="text-sm text-gray-700 mb-2">Start Date</Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    setShowDatePicker({ visible: true, index, field: 'startDate' })
+                <TextInput
+                  value={certification.certificationName}
+                  onChangeText={(value: string) =>
+                    handleCertificationChange(index, 'certificationName', value)
                   }
-                  className={`bg-gray-100 px-4 py-3 rounded-lg ${
-                    errors[index]?.startDate ? 'border border-red-600' : ''
-                  }`}
-                >
-                  <Text className={certification.startDate ? 'text-black' : 'text-gray-400'}>
-                    {certification.startDate
-                      ? formatDate(certification.startDate)
-                      : 'Select date'}
-                  </Text>
-                </TouchableOpacity>
-                {errors[index]?.startDate && (
+                  placeholder="Certification name"
+                  className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.certificationName
+                      ? 'border border-red-600'
+                      : ''
+                    }`}
+                />
+                {errors[index]?.certificationName && (
                   <Text className="text-xs text-red-600 mt-1">
-                    {errors[index]?.startDate}
+                    {errors[index]?.certificationName}
                   </Text>
                 )}
               </View>
 
-              {/* End Date */}
-              <View className="flex-1">
-                <Text className="text-sm text-gray-700 mb-2">End Date</Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    setShowDatePicker({ visible: true, index, field: 'endDate' })
+              {/* Institute Input */}
+              <View className="mb-3">
+                <Text className="text-sm text-gray-700 mb-2">Institute</Text>
+                <TextInput
+                  value={certification.institute}
+                  onChangeText={(value: string) =>
+                    handleCertificationChange(index, 'institute', value)
                   }
-                  className={`bg-gray-100 px-4 py-3 rounded-lg ${
-                    errors[index]?.endDate ? 'border border-red-600' : ''
-                  }`}
-                >
-                  <Text className={certification.endDate ? 'text-black' : 'text-gray-400'}>
-                    {certification.endDate
-                      ? formatDate(certification.endDate)
-                      : 'Select date'}
-                  </Text>
-                </TouchableOpacity>
-                {errors[index]?.endDate && (
+                  placeholder="Institute name"
+                  className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.institute ? 'border border-red-600' : ''
+                    }`}
+                />
+                {errors[index]?.institute && (
                   <Text className="text-xs text-red-600 mt-1">
-                    {errors[index]?.endDate}
+                    {errors[index]?.institute}
                   </Text>
                 )}
               </View>
+
+              {/* Date Inputs */}
+              <View className="flex-row gap-3">
+                {/* Start Date */}
+                <View className="flex-1">
+                  <Text className="text-sm text-gray-700 mb-2">Start Date</Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setShowDatePicker({
+                        visible: true,
+                        index,
+                        field: 'startDate',
+                      })
+                    }
+                    className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.startDate ? 'border border-red-600' : ''
+                      }`}
+                  >
+                    <Text
+                      className={
+                        certification.startDate ? 'text-black' : 'text-gray-400'
+                      }
+                    >
+                      {certification.startDate
+                        ? formatDate(certification.startDate)
+                        : 'Select date'}
+                    </Text>
+                  </TouchableOpacity>
+                  {errors[index]?.startDate && (
+                    <Text className="text-xs text-red-600 mt-1">
+                      {errors[index]?.startDate}
+                    </Text>
+                  )}
+                </View>
+
+                {/* End Date */}
+                <View className="flex-1">
+                  <Text className="text-sm text-gray-700 mb-2">End Date</Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setShowDatePicker({
+                        visible: true,
+                        index,
+                        field: 'endDate',
+                      })
+                    }
+                    className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.endDate ? 'border border-red-600' : ''
+                      }`}
+                  >
+                    <Text
+                      className={
+                        certification.endDate ? 'text-black' : 'text-gray-400'
+                      }
+                    >
+                      {certification.endDate
+                        ? formatDate(certification.endDate)
+                        : 'Select date'}
+                    </Text>
+                  </TouchableOpacity>
+                  {errors[index]?.endDate && (
+                    <Text className="text-xs text-red-600 mt-1">
+                      {errors[index]?.endDate}
+                    </Text>
+                  )}
+                </View>
+              </View>
             </View>
-          </View>
-        ))}
+          ),
+        )}
 
         {/* Add Certification Button */}
         <TouchableOpacity
