@@ -18,7 +18,9 @@ import {
   setUpdateAppUserExperience,
 } from '../../store/user/user.actions';
 import { RegisterSteps } from '../../store/user/user.types';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 
 interface Experience {
   company: string;
@@ -43,17 +45,19 @@ interface DatePickerState {
 const ExperienceForm: React.FC = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state: RootState) => state.user);
-  
+
   const [errors, setErrors] = useState<ValidationErrors[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(
+    null,
+  );
 
   const handleAddExperience = (): void => {
     dispatch(
       setUpdateAppUserExperience([
         ...user.experience,
         { company: '', title: '', startDate: null, endDate: null },
-      ])
+      ]),
     );
   };
 
@@ -69,12 +73,12 @@ const ExperienceForm: React.FC = () => {
             style: 'destructive',
             onPress: () => {
               const updatedList = user.experience.filter(
-                (_: Experience, idx: number) => idx !== index
+                (_: Experience, idx: number) => idx !== index,
               );
               dispatch(setUpdateAppUserExperience(updatedList));
             },
           },
-        ]
+        ],
       );
     }
   };
@@ -82,14 +86,16 @@ const ExperienceForm: React.FC = () => {
   const handleExperienceChange = (
     index: number,
     field: keyof Experience,
-    value: string | Date | null
+    value: string | Date | null,
   ): void => {
-    const updatedList = user.experience.map((experience: Experience, idx: number) => {
-      if (idx === index) {
-        return { ...experience, [field]: value };
-      }
-      return experience;
-    });
+    const updatedList = user.experience.map(
+      (experience: Experience, idx: number) => {
+        if (idx === index) {
+          return { ...experience, [field]: value };
+        }
+        return experience;
+      },
+    );
     dispatch(setUpdateAppUserExperience(updatedList));
   };
 
@@ -102,7 +108,10 @@ const ExperienceForm: React.FC = () => {
     });
   };
 
-  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date): void => {
+  const handleDateChange = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ): void => {
     if (Platform.OS === 'android') {
       setShowDatePicker(null);
     }
@@ -111,40 +120,44 @@ const ExperienceForm: React.FC = () => {
       handleExperienceChange(
         showDatePicker.index,
         showDatePicker.field,
-        selectedDate
+        selectedDate,
       );
     }
   };
 
   const validate = (): boolean => {
-    const tempErrors: ValidationErrors[] = user.experience.map((experience: Experience) => {
-      const errors: ValidationErrors = {};
+    const tempErrors: ValidationErrors[] = user.experience.map(
+      (experience: Experience) => {
+        const errors: ValidationErrors = {};
 
-      if (!experience.company.trim()) {
-        errors.company = 'Company is required';
-      }
+        if (!experience.company.trim()) {
+          errors.company = 'Company is required';
+        }
 
-      if (!experience.title.trim()) {
-        errors.title = 'Job title is required';
-      }
+        if (!experience.title.trim()) {
+          errors.title = 'Job title is required';
+        }
 
-      if (!experience.startDate) {
-        errors.startDate = 'Start date is required';
-      }
+        if (!experience.startDate) {
+          errors.startDate = 'Start date is required';
+        }
 
-      if (
-        experience.startDate &&
-        experience.endDate &&
-        experience.endDate < experience.startDate
-      ) {
-        errors.endDate = 'End date cannot be before start date';
-      }
+        if (
+          experience.startDate &&
+          experience.endDate &&
+          experience.endDate < experience.startDate
+        ) {
+          errors.endDate = 'End date cannot be before start date';
+        }
 
-      return errors;
-    });
+        return errors;
+      },
+    );
 
     setErrors(tempErrors);
-    return tempErrors.every((error: ValidationErrors) => Object.keys(error).length === 0);
+    return tempErrors.every(
+      (error: ValidationErrors) => Object.keys(error).length === 0,
+    );
   };
 
   const handleSkip = (): void => {
@@ -161,13 +174,16 @@ const ExperienceForm: React.FC = () => {
     try {
       // Add your API call here
       // await updateUser({ experiences: user.experience });
-      
-      Alert.alert('Success', 'Your experience details have been successfully updated.');
+
+      Alert.alert(
+        'Success',
+        'Your experience details have been successfully updated.',
+      );
       dispatch(setCurrentStep(RegisterSteps.Certification));
     } catch (error: unknown) {
       Alert.alert(
         'Error',
-        'An error occurred while updating experience. Please try again later.'
+        'An error occurred while updating experience. Please try again later.',
       );
     } finally {
       setLoading(false);
@@ -179,13 +195,16 @@ const ExperienceForm: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-white px-6 pt-6">
-      {/* Header */}
-      <View className="mb-6">
-        <TouchableOpacity onPress={handleBack} className="mb-4">
+    <View className="flex-1 bg-white px-6">
+      <View className="mt-4 h-12 justify-center">
+        <TouchableOpacity
+          onPress={handleBack}
+          className="absolute left-4 top-1/2 -translate-y-1/2"
+        >
           <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
         </TouchableOpacity>
-        <Text className="text-3xl font-semibold">Experience</Text>
+
+        <Text className="text-4xl font-semibold text-center">Experience</Text>
       </View>
 
       {/* Scrollable Experience List */}
@@ -261,13 +280,21 @@ const ExperienceForm: React.FC = () => {
                 <Text className="text-sm text-gray-700 mb-2">Start Date</Text>
                 <TouchableOpacity
                   onPress={() =>
-                    setShowDatePicker({ visible: true, index, field: 'startDate' })
+                    setShowDatePicker({
+                      visible: true,
+                      index,
+                      field: 'startDate',
+                    })
                   }
                   className={`bg-gray-100 px-4 py-3 rounded-lg ${
                     errors[index]?.startDate ? 'border border-red-600' : ''
                   }`}
                 >
-                  <Text className={experience.startDate ? 'text-black' : 'text-gray-400'}>
+                  <Text
+                    className={
+                      experience.startDate ? 'text-black' : 'text-gray-400'
+                    }
+                  >
                     {experience.startDate
                       ? formatDate(experience.startDate)
                       : 'Select date'}
@@ -287,13 +314,21 @@ const ExperienceForm: React.FC = () => {
                 </Text>
                 <TouchableOpacity
                   onPress={() =>
-                    setShowDatePicker({ visible: true, index, field: 'endDate' })
+                    setShowDatePicker({
+                      visible: true,
+                      index,
+                      field: 'endDate',
+                    })
                   }
                   className={`bg-gray-100 px-4 py-3 rounded-lg ${
                     errors[index]?.endDate ? 'border border-red-600' : ''
                   }`}
                 >
-                  <Text className={experience.endDate ? 'text-black' : 'text-gray-400'}>
+                  <Text
+                    className={
+                      experience.endDate ? 'text-black' : 'text-gray-400'
+                    }
+                  >
                     {experience.endDate
                       ? formatDate(experience.endDate)
                       : 'Select date'}

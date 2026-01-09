@@ -65,7 +65,7 @@ export default function RegisterMain() {
           className="w-[220px] h-[220px] absolute bottom-0"
         />
       </View>
-      <ScrollView className="absolute bottom-0 w-full h-[60%] bg-white rounded-xl">
+      <ScrollView className="absolute bottom-0 w-full h-[60%] bg-white rounded-t-xl">
         {renderStep()}
       </ScrollView>
     </View>

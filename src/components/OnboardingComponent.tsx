@@ -7,9 +7,20 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/navigation';
+
+type OnboardingNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'Onboarding'
+>;
 
 export default function OnboardingComponent() {
   const [activeOnboardingPage, setActiveOnboardingPage] = useState<number>(0);
+  const navigation = useNavigation<OnboardingNavigationProp>();
+
   const onboardingData = [
     {
       heading: 'Where Communication Meets Accessibility for Everyone.',
@@ -30,10 +41,28 @@ export default function OnboardingComponent() {
     },
   ];
 
+  // Function to mark first launch done and navigate to Login
+  const finishOnboarding = async () => {
+    try {
+      await AsyncStorage.setItem('hasLaunched', 'true');
+      navigation.replace('Login'); // replace so user can't go back
+    } catch (error) {
+      console.error('Error finishing onboarding', error);
+      navigation.replace('Login');
+    }
+  };
+
   const handleNext = () => {
     if (activeOnboardingPage < onboardingData.length - 1) {
       setActiveOnboardingPage(activeOnboardingPage + 1);
+    } else {
+      // Last page -> finish onboarding
+      finishOnboarding();
     }
+  };
+
+  const handleSkip = () => {
+    finishOnboarding(); // skip to login
   };
 
   return (
@@ -55,8 +84,8 @@ export default function OnboardingComponent() {
           source={require('../assets/logo.png')}
           className="absolute top-8 left-8"
         />
-        <View className="px-6 absolute bottom-16">
-          <Text className="text-white text-3xl font-bold mt-2 text-center ">
+        <View className="px-6 absolute bottom-16 w-full">
+          <Text className="text-white text-3xl font-bold mt-2 text-center">
             {onboardingData[activeOnboardingPage].heading}
           </Text>
 
@@ -64,35 +93,33 @@ export default function OnboardingComponent() {
             {onboardingData[activeOnboardingPage].paragraph}
           </Text>
 
-          <View className="flex-row justify-between mt-2">
-            <Text className="text-md text-white">skip</Text>
+          <View className="flex-row justify-between mt-6 items-center">
+            {/* Skip Button */}
+            <TouchableOpacity onPress={handleSkip}>
+              <Text className="text-md text-white font-semibold">Skip</Text>
+            </TouchableOpacity>
 
+            {/* Pagination Dots */}
             <View className="flex-row justify-between mt-3 gap-2">
-              <View
-                className={
-                  activeOnboardingPage === 0
-                    ? ' bg-white w-7 h-2 rounded-full'
-                    : 'bg-gray-500 w-2 h-2 rounded-full'
-                }
-              />
-              <View
-                className={
-                  activeOnboardingPage === 1
-                    ? ' bg-white w-7 h-2 rounded-full'
-                    : 'bg-gray-500 w-2 h-2 rounded-full'
-                }
-              />
-              <View
-                className={
-                  activeOnboardingPage === 2
-                    ? ' bg-white w-7 h-2 rounded-full'
-                    : 'bg-gray-500 w-2 h-2 rounded-full'
-                }
-              />
+              {onboardingData.map((_, index) => (
+                <View
+                  key={index}
+                  className={
+                    activeOnboardingPage === index
+                      ? 'bg-white w-7 h-2 rounded-full'
+                      : 'bg-gray-500 w-2 h-2 rounded-full'
+                  }
+                />
+              ))}
             </View>
 
+            {/* Next Button */}
             <TouchableOpacity onPress={handleNext}>
-              <Text className="text-md text-white font-semibold">Next</Text>
+              <Text className="text-md text-white font-semibold">
+                {activeOnboardingPage === onboardingData.length - 1
+                  ? 'Start'
+                  : 'Next'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -13,7 +13,14 @@ import {
 } from 'react-native';
 import useAuthService from '../../services/auth';
 import Toast from 'react-native-toast-message';
+import { saveTokens } from '../../utils/storage';
 
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/navigation';
+import Feather from 'react-native-vector-icons/Feather';
+
+type LoginScreenProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export default function LoginComponent() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -25,6 +32,7 @@ export default function LoginComponent() {
     password?: string;
   }>({});
   const { signin, loading } = useAuthService();
+  const navigation = useNavigation<LoginScreenProp>();
 
   const validate = () => {
     let tempErrors: { phoneNumber?: string; password?: string } = {};
@@ -54,12 +62,11 @@ export default function LoginComponent() {
       console.log('APP STARTED2');
 
       if (response) {
-        // saveAccessTokenInLocalStorage(response.accessToken);
-        // saveRefreshTokenInCookie(response.refreshToken);
+        saveTokens(response.accessToken, response.refreshToken);
         Toast.show({
           type: 'success',
-          text1: 'Success',
-          text2: 'Your profile was updated 👌',
+          text1: 'Login successful',
+          text2: 'Welcome back! 🎉',
         });
         // const decodedToken: any = jwtDecode(response.accessToken);
         // if (decodedToken?.isTrainer) {
@@ -67,7 +74,8 @@ export default function LoginComponent() {
         // } else {
         //   router.replace("/");
         // }
-        // toast.success("Login successful");
+        // Toast.success("Login successful");
+        navigation.replace('Home');
       } else {
         // toast.error("Invalid phone number or password.");
         Toast.show({
@@ -169,19 +177,22 @@ export default function LoginComponent() {
                     setPassword(text);
                     if (errors.password) setErrors({ ...errors, password: '' });
                   }}
-                  secureTextEntry={!showPassword}
+                  secureTextEntry={!showPassword} // toggle
                   autoCapitalize="none"
                   autoComplete="password"
                   editable={!isLoading}
                 />
+
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-4"
                   disabled={isLoading}
                 >
-                  <Text className="text-[#5B2EC4] font-medium">
-                    {showPassword ? 'Hide' : 'Show'}
-                  </Text>
+                  <Feather
+                    name={showPassword ? 'eye-off' : 'eye'}
+                    size={20}
+                    color="gray"
+                  />
                 </TouchableOpacity>
               </View>
               {errors.password ? (
@@ -223,7 +234,7 @@ export default function LoginComponent() {
                 Don't have an account?{' '}
               </Text>
               <TouchableOpacity
-                // onPress={onNavigateToRegister}
+                onPress={() => navigation.navigate('Register')}
                 disabled={isLoading}
               >
                 <Text className="text-[#5B2EC4] font-semibold text-sm">

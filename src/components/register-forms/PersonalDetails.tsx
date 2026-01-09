@@ -72,7 +72,7 @@ const PersonalDetails = () => {
   };
 
   const handleBack = () => {
-    // Add navigation back logic
+     dispatch(setCurrentStep(RegisterSteps.PhonePassword));
   };
 
   const isOtpComplete = otp.every(digit => digit !== '');

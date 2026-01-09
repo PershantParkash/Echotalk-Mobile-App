@@ -17,17 +17,20 @@ const AccountTypeForm = () => {
   const handleNext = () => {
     dispatch(setCurrentStep(RegisterSteps.UserType));
   };
-
+ const handleBack = () => {
+    //  dispatch(setCurrentStep(RegisterSteps.UserType));
+    
+  };
   return (
      <View className="flex-1 justify-center items-center px-6 bg-white">
       <View className="w-full max-w-[400px]">
         <View className="mt-4 h-12 justify-center">
-          <MaterialIcons
-            name="arrow-back-ios"
-            size={24}
-            color="#000"
-            className="absolute left-4"
-          />
+            <TouchableOpacity
+                  onPress={handleBack}
+                  className="absolute left-4 top-1/2 -translate-y-1/2"
+                >
+                  <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
+                </TouchableOpacity>
 
           <Text className="text-4xl font-semibold text-center">
             Account type

@@ -18,7 +18,9 @@ import {
   setUpdateAppUserEducation,
 } from '../../store/user/user.actions';
 import { RegisterSteps, UserEducation } from '../../store/user/user.types';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 
 interface ValidationErrors {
   institute?: string;
@@ -36,17 +38,19 @@ interface DatePickerState {
 const EducationForm: React.FC = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state: RootState) => state.user);
-  
+
   const [errors, setErrors] = useState<ValidationErrors[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(
+    null,
+  );
 
   const handleAddEducation = (): void => {
     dispatch(
       setUpdateAppUserEducation([
         ...user.education,
         { institute: '', areaOfStudy: '', startDate: null, endDate: null },
-      ])
+      ]),
     );
   };
 
@@ -61,11 +65,13 @@ const EducationForm: React.FC = () => {
             text: 'Remove',
             style: 'destructive',
             onPress: () => {
-              const updatedList = user.education.filter((_: UserEducation, idx: number) => idx !== index);
+              const updatedList = user.education.filter(
+                (_: UserEducation, idx: number) => idx !== index,
+              );
               dispatch(setUpdateAppUserEducation(updatedList));
             },
           },
-        ]
+        ],
       );
     }
   };
@@ -73,14 +79,16 @@ const EducationForm: React.FC = () => {
   const handleEducationChange = (
     index: number,
     field: keyof UserEducation,
-    value: string | Date | null
+    value: string | Date | null,
   ): void => {
-    const updatedList = user.education.map((education: UserEducation, idx: number) => {
-      if (idx === index) {
-        return { ...education, [field]: value };
-      }
-      return education;
-    });
+    const updatedList = user.education.map(
+      (education: UserEducation, idx: number) => {
+        if (idx === index) {
+          return { ...education, [field]: value };
+        }
+        return education;
+      },
+    );
     dispatch(setUpdateAppUserEducation(updatedList));
   };
 
@@ -93,7 +101,10 @@ const EducationForm: React.FC = () => {
     });
   };
 
-  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date): void => {
+  const handleDateChange = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ): void => {
     if (Platform.OS === 'android') {
       setShowDatePicker(null);
     }
@@ -102,40 +113,44 @@ const EducationForm: React.FC = () => {
       handleEducationChange(
         showDatePicker.index,
         showDatePicker.field,
-        selectedDate
+        selectedDate,
       );
     }
   };
 
   const validate = (): boolean => {
-    const tempErrors: ValidationErrors[] = user.education.map((education: UserEducation) => {
-      const errors: ValidationErrors = {};
+    const tempErrors: ValidationErrors[] = user.education.map(
+      (education: UserEducation) => {
+        const errors: ValidationErrors = {};
 
-      if (!education.institute.trim()) {
-        errors.institute = 'Institute name is required';
-      }
+        if (!education.institute.trim()) {
+          errors.institute = 'Institute name is required';
+        }
 
-      if (!education.areaOfStudy.trim()) {
-        errors.areaOfStudy = 'Area of Study is required';
-      }
+        if (!education.areaOfStudy.trim()) {
+          errors.areaOfStudy = 'Area of Study is required';
+        }
 
-      if (!education.startDate) {
-        errors.startDate = 'Start date is required';
-      }
+        if (!education.startDate) {
+          errors.startDate = 'Start date is required';
+        }
 
-      if (
-        education.startDate &&
-        education.endDate &&
-        education.endDate < education.startDate
-      ) {
-        errors.endDate = 'End date cannot be before start date';
-      }
+        if (
+          education.startDate &&
+          education.endDate &&
+          education.endDate < education.startDate
+        ) {
+          errors.endDate = 'End date cannot be before start date';
+        }
 
-      return errors;
-    });
+        return errors;
+      },
+    );
 
     setErrors(tempErrors);
-    return tempErrors.every((error: ValidationErrors) => Object.keys(error).length === 0);
+    return tempErrors.every(
+      (error: ValidationErrors) => Object.keys(error).length === 0,
+    );
   };
 
   const handleSkip = (): void => {
@@ -152,13 +167,16 @@ const EducationForm: React.FC = () => {
     try {
       // Add your API call here
       // await updateUser({ educations: user.education });
-      
-      Alert.alert('Success', 'Your education details have been successfully updated.');
+
+      Alert.alert(
+        'Success',
+        'Your education details have been successfully updated.',
+      );
       dispatch(setCurrentStep(RegisterSteps.Experience));
     } catch (error: unknown) {
       Alert.alert(
         'Error',
-        'An error occurred while updating education. Please try again later.'
+        'An error occurred while updating education. Please try again later.',
       );
     } finally {
       setLoading(false);
@@ -166,17 +184,21 @@ const EducationForm: React.FC = () => {
   };
 
   const handleBack = (): void => {
-    dispatch(setCurrentStep(RegisterSteps.PersonalDetails));
+    dispatch(setCurrentStep(RegisterSteps.PhoneVerification));
   };
 
   return (
-    <View className="flex-1 bg-white px-6 pt-6">
+    <View className="flex-1 bg-white px-6">
       {/* Header */}
-      <View className="mb-6">
-        <TouchableOpacity onPress={handleBack} className="mb-4">
-          <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text className="text-3xl font-semibold">Education</Text>
+      <View className="mt-4 h-12 justify-center">
+         <TouchableOpacity
+        onPress={handleBack}
+        className="absolute left-4 top-1/2 -translate-y-1/2"
+      >
+        <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
+      </TouchableOpacity>
+
+        <Text className="text-4xl font-semibold text-center">Education</Text>
       </View>
 
       {/* Scrollable Education List */}
@@ -252,13 +274,21 @@ const EducationForm: React.FC = () => {
                 <Text className="text-sm text-gray-700 mb-2">Start Date</Text>
                 <TouchableOpacity
                   onPress={() =>
-                    setShowDatePicker({ visible: true, index, field: 'startDate' })
+                    setShowDatePicker({
+                      visible: true,
+                      index,
+                      field: 'startDate',
+                    })
                   }
                   className={`bg-gray-100 px-4 py-3 rounded-lg ${
                     errors[index]?.startDate ? 'border border-red-600' : ''
                   }`}
                 >
-                  <Text className={education.startDate ? 'text-black' : 'text-gray-400'}>
+                  <Text
+                    className={
+                      education.startDate ? 'text-black' : 'text-gray-400'
+                    }
+                  >
                     {education.startDate
                       ? formatDate(education.startDate)
                       : 'Select date'}
@@ -278,13 +308,21 @@ const EducationForm: React.FC = () => {
                 </Text>
                 <TouchableOpacity
                   onPress={() =>
-                    setShowDatePicker({ visible: true, index, field: 'endDate' })
+                    setShowDatePicker({
+                      visible: true,
+                      index,
+                      field: 'endDate',
+                    })
                   }
                   className={`bg-gray-100 px-4 py-3 rounded-lg ${
                     errors[index]?.endDate ? 'border border-red-600' : ''
                   }`}
                 >
-                  <Text className={education.endDate ? 'text-black' : 'text-gray-400'}>
+                  <Text
+                    className={
+                      education.endDate ? 'text-black' : 'text-gray-400'
+                    }
+                  >
                     {education.endDate
                       ? formatDate(education.endDate)
                       : 'Select date'}
