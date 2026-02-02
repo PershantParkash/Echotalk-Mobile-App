@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
@@ -40,16 +39,17 @@ interface Course {
 }
 
 interface Service {
-  id: string | number;
-  title: string;
-  name?: string; // Alternative field name
+  id: number;
+  name?: string;
+  title?: string;
   description: string;
-  price: number;
+  price: string | number;
   originalPrice?: number;
   bookings?: number;
   rating?: number;
   image?: string;
-  thumbnail?: string; // Alternative field name
+  thumbnail?: string;
+  attachments?: string[];
 }
 
 interface Category {
@@ -270,40 +270,87 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
 };
 
 const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
-  const imageUri = service.image || service.thumbnail || DEFAULT_IMAGE;
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  
+  // Get images from attachments or fallback to default
+  const images = service.attachments && service.attachments.length > 0 
+    ? service.attachments 
+    : [service.image || service.thumbnail || DEFAULT_IMAGE];
+  
   const title = service.title || service.name || 'Unknown Service';
-  const price = service.price || 0;
+  const price = typeof service.price === 'string' ? parseFloat(service.price) : service.price || 0;
   const originalPrice = service.originalPrice || price;
   const bookings = service.bookings || 0;
   const rating = service.rating || 0;
 
+  // Auto-cycle through images every 2 seconds
+  useEffect(() => {
+    if (images.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prevIndex) => 
+        prevIndex === images.length - 1 ? 0 : prevIndex + 1
+      );
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [images.length]);
+
   return (
     <View style={styles.card}>
-      <Image
-        source={{ uri: imageUri }}
-        className="w-full h-40"
-        resizeMode="cover"
-        defaultSource={{ uri: DEFAULT_IMAGE }}
-      />
+      {/* Image Container with Indicators */}
+      <View className="relative">
+        <Image
+          source={{ uri: images[currentImageIndex] }}
+          className="w-full h-40"
+          resizeMode="cover"
+          defaultSource={{ uri: DEFAULT_IMAGE }}
+        />
+        
+        {/* Image Indicators - compact version */}
+        {images.length > 1 && (
+          <View className="absolute bottom-2 left-0 right-0 flex-row justify-center">
+            {images.map((_, index) => (
+              <View
+                key={index}
+                className={`h-1 rounded-full mx-0.5 ${
+                  currentImageIndex === index 
+                    ? 'bg-white w-4' 
+                    : 'bg-white/50 w-1'
+                }`}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Image Counter - smaller version */}
+        {images.length > 1 && (
+          <View className="absolute top-2 right-2 bg-black/60 px-1.5 py-0.5 rounded">
+            <Text className="text-white text-[10px] font-semibold">
+              {currentImageIndex + 1}/{images.length}
+            </Text>
+          </View>
+        )}
+      </View>
 
       <View className="p-4">
         <Text className="text-base font-bold text-gray-800 mb-1" numberOfLines={1}>
           {title}
         </Text>
-       <Text
-  className="text-xs text-gray-500 mb-3"
-  numberOfLines={2}
->
-  {stripHtml(service.description)}
-</Text>
+        
+        <Text className="text-xs text-gray-500 mb-2" numberOfLines={2}>
+          {stripHtml(service.description)}
+        </Text>
 
         <View className="flex-row items-center justify-between mb-2">
           <View className="flex-row items-center gap-2">
             <Text className="text-lg font-bold text-purple-600">
-              ${price}
+              ${price.toFixed(2)}
             </Text>
             {originalPrice > price && (
-              <Text style={styles.strikethrough}>${originalPrice}</Text>
+              <Text style={styles.strikethrough}>
+                ${originalPrice.toFixed(2)}
+              </Text>
             )}
           </View>
           <Text className="text-xs text-gray-500">
@@ -322,7 +369,7 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
       </View>
     </View>
   );
-};ContinueCourseCard
+};
 
 const SectionHeader: React.FC<{ title: string }> = ({ title }) => {
   return (

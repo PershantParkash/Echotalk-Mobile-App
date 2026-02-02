@@ -1,44 +1,26 @@
 {
   "project_info": {
-    "project_number": "240926077004",
-    "project_id": "echotalk-c3a3b",
-    "storage_bucket": "echotalk-c3a3b.firebasestorage.app"
+    "project_number": "413100682006",
+    "project_id": "echotalk-36622",
+    "storage_bucket": "echotalk-36622.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:240926077004:android:1289108a6301dbbdea04e9",
+        "mobilesdk_app_id": "1:413100682006:android:ecc393760b57d415933e37",
         "android_client_info": {
           "package_name": "com.echotalk"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "240926077004-sm9almc8j54b4tr0bdcnb5olpgd4vffo.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.echotalk",
-            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
-          }
-        },
-        {
-          "client_id": "240926077004-almuh9htno9hi60ipklh1mgdiv8o50fd.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDsSvcvebK92QjUdhWxF51yM2xsqdn6sk8"
+          "current_key": "AIzaSyDajUK_l5QcHEajMwrvP-IV2GYhV61f2Pc"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "240926077004-almuh9htno9hi60ipklh1mgdiv8o50fd.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }
