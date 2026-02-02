@@ -1,17 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
-import { Text, View, TouchableOpacity, TextInput, Alert } from 'react-native';
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Image,
+} from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import {
-  setCurrentStep,
-} from '../../store/user/user.actions';
+import { setCurrentStep } from '../../store/user/user.actions';
 import { RootState } from '../../store';
 import { RegisterSteps } from '../../store/user/user.types';
 
 const PersonalDetails = () => {
   const { user } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch();
-  
+
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [resendTimer, setResendTimer] = useState(60);
   const [canResend, setCanResend] = useState(false);
@@ -65,14 +70,14 @@ const PersonalDetails = () => {
       Alert.alert('Error', 'Please enter complete OTP');
       return;
     }
-    
+
     // Add your OTP verification logic here
     // For now, just move to next step
     dispatch(setCurrentStep(RegisterSteps.UserType));
   };
 
   const handleBack = () => {
-     dispatch(setCurrentStep(RegisterSteps.PhonePassword));
+    dispatch(setCurrentStep(RegisterSteps.PhonePassword));
   };
 
   const isOtpComplete = otp.every(digit => digit !== '');
@@ -80,21 +85,39 @@ const PersonalDetails = () => {
   return (
     <View className="flex-1 justify-center items-center px-6 bg-white">
       <View className="w-full max-w-[400px]">
-        <View className="mt-4 mb-8">
-          <TouchableOpacity
-            onPress={handleBack}
-            className="absolute left-0 top-0 p-2"
-          >
-            <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
-          </TouchableOpacity>
+        {/* <View className="mt-4 mb-8">
+             <TouchableOpacity
+                                           onPress={handleBack}
+                                           className="absolute  "
+                                         >
+                                           <Image
+                                             source={require('../../assets/Badges Arrow.png')}
+                                             className="w-10 h-10 mr-8"
+                                             resizeMode="contain"
+                                           />
+                                         </TouchableOpacity>
 
           <Text className="text-3xl font-semibold text-center mt-2">
+            Phone Number Verification
+          </Text>
+        </View> */}
+        <View className="mt-4 h-22 ">
+          <TouchableOpacity onPress={handleBack} className="absolute  ">
+            <Image
+              source={require('../../assets/Badges Arrow.png')}
+              className="w-10 h-10 mr-8"
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
+
+          <Text className="text-4xl font-semibold text-center">
             Phone Number Verification
           </Text>
         </View>
 
         <Text className="text-sm text-gray-600 mb-8 text-center">
-          OTP verification code has been sent to your provided mobile number +44******0074
+          OTP verification code has been sent to your provided mobile number
+          +44******0074
         </Text>
 
         <Text className="text-base font-medium text-gray-700 mb-3">
@@ -106,10 +129,10 @@ const PersonalDetails = () => {
           {otp.map((digit, index) => (
             <TextInput
               key={index}
-            //   ref={(ref) => (inputRefs.current[index] = ref)}
+              //   ref={(ref) => (inputRefs.current[index] = ref)}
               value={digit}
-              onChangeText={(value) => handleOtpChange(value, index)}
-              onKeyPress={(e) => handleKeyPress(e, index)}
+              onChangeText={value => handleOtpChange(value, index)}
+              onKeyPress={e => handleKeyPress(e, index)}
               keyboardType="number-pad"
               maxLength={1}
               className="w-12 h-14 bg-gray-100 rounded-lg text-center text-xl font-semibold"
@@ -121,10 +144,7 @@ const PersonalDetails = () => {
         {/* Resend Code */}
         <View className="flex-row items-center justify-center mb-6">
           <Text className="text-sm text-gray-600">Didn't receive code? </Text>
-          <TouchableOpacity
-            onPress={handleResend}
-            disabled={!canResend}
-          >
+          <TouchableOpacity onPress={handleResend} disabled={!canResend}>
             <Text
               className={`text-sm font-medium ${
                 canResend ? 'text-[#5B2EC4]' : 'text-gray-400'

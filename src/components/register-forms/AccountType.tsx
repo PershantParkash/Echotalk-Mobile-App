@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Text, View, TouchableOpacity, Dimensions } from 'react-native';
+import { Text, View, TouchableOpacity, Dimensions, Image } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import {
@@ -17,20 +17,24 @@ const AccountTypeForm = () => {
   const handleNext = () => {
     dispatch(setCurrentStep(RegisterSteps.UserType));
   };
- const handleBack = () => {
-    //  dispatch(setCurrentStep(RegisterSteps.UserType));
-    
+  const handleBack = () => {
+
   };
   return (
-     <View className="flex-1 justify-center items-center px-6 bg-white">
+    <View className="flex-1 justify-center items-center px-6 bg-white">
       <View className="w-full max-w-[400px]">
         <View className="mt-4 h-12 justify-center">
-            <TouchableOpacity
-                  onPress={handleBack}
-                  className="absolute left-4 top-1/2 -translate-y-1/2"
-                >
-                  <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
-                </TouchableOpacity>
+             <TouchableOpacity
+            onPress={handleBack}
+            className="absolute  top-1/2 -translate-y-1/2 p-3 z-50 "
+            activeOpacity={0.7}
+          >
+            <Image
+              source={require('../../assets/Badges Arrow.png')}
+              className="w-10 h-10"
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
 
           <Text className="text-4xl font-semibold text-center">
             Account type
@@ -51,18 +55,31 @@ const AccountTypeForm = () => {
             )
           }
           className={`mb-4 h-[108px] rounded-lg p-5 flex-row items-center bg-white shadow-sm ${
-            user.accountType === AccountType.Individual ? 'border border-[#5B2EC4]' : ''
+            user.accountType === AccountType.Individual
+              ? 'border border-[#5B2EC4]'
+              : ''
           }`}
         >
           <View className="w-11 h-11 rounded-full justify-center items-center mr-3">
-            <SimpleLineIcons name="user" size={24}  color={user.accountType === AccountType.Individual ? '#5B2EC4' : '#666666'} />
+            <SimpleLineIcons
+              name="user"
+              size={24}
+              color={
+                user.accountType === AccountType.Individual
+                  ? '#5B2EC4'
+                  : '#666666'
+              }
+            />
           </View>
-          
+
           <View className="flex-1">
             <Text
               className="text-lg font-semibold mb-1"
               style={{
-                color: user.accountType === AccountType.Individual ? '#5B2EC4': '#666666',
+                color:
+                  user.accountType === AccountType.Individual
+                    ? '#5B2EC4'
+                    : '#666666',
               }}
             >
               Individual
@@ -70,7 +87,10 @@ const AccountTypeForm = () => {
             <Text
               className="text-sm"
               style={{
-                color:  user.accountType === AccountType.Individual  ? '#5B2EC4' : '#666666',
+                color:
+                  user.accountType === AccountType.Individual
+                    ? '#5B2EC4'
+                    : '#666666',
               }}
             >
               Offer or avail services

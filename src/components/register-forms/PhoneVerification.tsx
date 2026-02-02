@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   Dimensions,
   TextInput,
+  Image
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -31,13 +32,17 @@ const PhoneVerification = () => {
   return (
     <View className="flex-1 justify-center items-center px-6 bg-white">
       <View className="w-full max-w-[400px]">
-        <View className="mt-4 h-22 justify-center">
-          <TouchableOpacity
-            onPress={handleBack}
-            className="absolute left-4 top-1/2 -translate-y-1/2"
-          >
-            <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
-          </TouchableOpacity>
+        <View className="mt-4 h-22 ">
+            <TouchableOpacity
+                                  onPress={handleBack}
+                                  className="absolute "
+                                >
+                                  <Image
+                                    source={require('../../assets/Badges Arrow.png')}
+                                    className="w-10 h-10 mr-8"
+                                    resizeMode="contain"
+                                  />
+                                </TouchableOpacity>
 
           <Text className="text-4xl font-semibold text-center">
             Phone Number Verification

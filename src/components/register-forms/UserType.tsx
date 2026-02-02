@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Text, View, TouchableOpacity, Dimensions } from 'react-native';
+import { Text, View, TouchableOpacity, Dimensions, Image } from 'react-native';
 import { RegisterSteps, UserType } from '../../store/user/user.types';
 import { useSelector, useDispatch } from 'react-redux';
 import {
@@ -19,20 +19,25 @@ const UserTypeForm = () => {
     dispatch(setCurrentStep(RegisterSteps.PhonePassword));
   };
 
-   const handleBack = () => {
-     dispatch(setCurrentStep(RegisterSteps.UserType));
+  const handleBack = () => {
+    dispatch(setCurrentStep(RegisterSteps.AccountType));
   };
 
   return (
     <View className="flex-1 justify-center items-center px-6 bg-white">
       <View className="w-full max-w-[400px]">
         <View className="mt-4 h-12 justify-center">
-            <TouchableOpacity
-                  onPress={handleBack}
-                  className="absolute left-4 top-1/2 -translate-y-1/2"
-                >
-                  <MaterialIcons name="arrow-back-ios" size={24} color="#000" />
-                </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleBack}
+            className="absolute  top-1/2 -translate-y-1/2 p-3 z-50"
+            activeOpacity={0.7}
+          >
+            <Image
+              source={require('../../assets/Badges Arrow.png')}
+              className="w-10 h-10"
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
 
           <Text className="text-4xl font-semibold text-center">User Type</Text>
         </View>

@@ -7,7 +7,7 @@ import { RootStackParamList } from '../navigation/navigation';
 
 type SplashScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
-  'Home'
+  'MainTabs'
 >;
 
 export default function SplashComponent() {

@@ -1,6 +1,9 @@
 import axios from 'axios';
 import { getAccessToken, getRefreshToken, saveTokens } from '../utils/storage';
 import { NEXT_PUBLIC_API_URL } from '@env';
+
+// console.log('Base URL:', NEXT_PUBLIC_API_URL);
+
 const axiosClient = axios.create({
   baseURL: NEXT_PUBLIC_API_URL, 
   timeout: 10000,
