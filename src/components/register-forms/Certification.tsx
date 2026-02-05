@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Image
+  Image,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -24,6 +24,11 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
+import useUsersService from '../../services/user';
+import { saveTokens } from '../../utils/storage';
+import Toast from 'react-native-toast-message';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/navigation';
 
 interface Certification {
   certificationName: string;
@@ -44,12 +49,17 @@ interface DatePickerState {
   index: number;
   field: 'startDate' | 'endDate';
 }
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MainTabs'>;
 
 const CertificationForm: React.FC = () => {
   const dispatch = useDispatch();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const { user } = useSelector((state: RootState) => state.user);
-
+  const {
+    updateUser,
+    switchToTrainer,
+    loading: apiLoading,
+  } = useUsersService();
   const [errors, setErrors] = useState<ValidationErrors[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(
@@ -169,18 +179,6 @@ const CertificationForm: React.FC = () => {
     );
   };
 
-  const saveTokens = async (
-    accessToken: string,
-    refreshToken: string,
-  ): Promise<void> => {
-    try {
-      await AsyncStorage.setItem('accessToken', accessToken);
-      await AsyncStorage.setItem('refreshToken', refreshToken);
-    } catch (error) {
-      console.error('Error saving tokens:', error);
-    }
-  };
-
   const handleSkip = async (): Promise<void> => {
     setLoading(true);
     try {
@@ -211,21 +209,17 @@ const CertificationForm: React.FC = () => {
 
     setLoading(true);
     try {
-      // Add your API calls here
-      // await updateUser({ certifications: user.certification });
-      // const response = await switchToTrainer();
-      // await saveTokens(response.accessToken, response.refreshToken);
+      await updateUser({ certifications: user.certification });
+      const response = await switchToTrainer();
+      await saveTokens(response.accessToken, response.refreshToken);
 
-      Alert.alert(
-        'Success',
-        'Your certification details have been successfully updated.',
-      );
-
-      // Navigate to trainer dashboard
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'TrainerDashboard' as never }],
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Your certification details have been successfully updated.',
       });
+
+      navigation.replace('MainTabs', { screen: 'HomeTab' });
     } catch (error: unknown) {
       Alert.alert(
         'Error',
@@ -244,16 +238,13 @@ const CertificationForm: React.FC = () => {
     <View className="flex-1 bg-white px-6">
       {/* Header */}
       <View className="mt-4 h-12 justify-center">
-         <TouchableOpacity
-                                          onPress={handleBack}
-                                          className="absolute  "
-                                        >
-                                          <Image
-                                            source={require('../../assets/Badges Arrow.png')}
-                                            className="w-10 h-10 mr-8"
-                                            resizeMode="contain"
-                                          />
-                                        </TouchableOpacity>
+        <TouchableOpacity onPress={handleBack} className="absolute  ">
+          <Image
+            source={require('../../assets/Badges Arrow.png')}
+            className="w-10 h-10 mr-8"
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
 
         <Text className="text-4xl font-semibold text-center">
           Certification
@@ -298,10 +289,11 @@ const CertificationForm: React.FC = () => {
                     handleCertificationChange(index, 'certificationName', value)
                   }
                   placeholder="Certification name"
-                  className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.certificationName
+                  className={`bg-gray-100 px-4 py-3 rounded-lg ${
+                    errors[index]?.certificationName
                       ? 'border border-red-600'
                       : ''
-                    }`}
+                  }`}
                 />
                 {errors[index]?.certificationName && (
                   <Text className="text-xs text-red-600 mt-1">
@@ -319,8 +311,9 @@ const CertificationForm: React.FC = () => {
                     handleCertificationChange(index, 'institute', value)
                   }
                   placeholder="Institute name"
-                  className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.institute ? 'border border-red-600' : ''
-                    }`}
+                  className={`bg-gray-100 px-4 py-3 rounded-lg ${
+                    errors[index]?.institute ? 'border border-red-600' : ''
+                  }`}
                 />
                 {errors[index]?.institute && (
                   <Text className="text-xs text-red-600 mt-1">
@@ -342,8 +335,9 @@ const CertificationForm: React.FC = () => {
                         field: 'startDate',
                       })
                     }
-                    className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.startDate ? 'border border-red-600' : ''
-                      }`}
+                    className={`bg-gray-100 px-4 py-3 rounded-lg ${
+                      errors[index]?.startDate ? 'border border-red-600' : ''
+                    }`}
                   >
                     <Text
                       className={
@@ -373,8 +367,9 @@ const CertificationForm: React.FC = () => {
                         field: 'endDate',
                       })
                     }
-                    className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.endDate ? 'border border-red-600' : ''
-                      }`}
+                    className={`bg-gray-100 px-4 py-3 rounded-lg ${
+                      errors[index]?.endDate ? 'border border-red-600' : ''
+                    }`}
                   >
                     <Text
                       className={
