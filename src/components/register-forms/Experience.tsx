@@ -22,6 +22,7 @@ import { RegisterSteps } from '../../store/user/user.types';
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
+import useUsersService from '../../services/user';
 
 interface Experience {
   company: string;
@@ -46,7 +47,7 @@ interface DatePickerState {
 const ExperienceForm: React.FC = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state: RootState) => state.user);
-
+  const { updateUser } = useUsersService();
   const [errors, setErrors] = useState<ValidationErrors[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(
@@ -174,7 +175,7 @@ const ExperienceForm: React.FC = () => {
     setLoading(true);
     try {
       // Add your API call here
-      // await updateUser({ experiences: user.experience });
+      await updateUser({ experiences: user.experience });
 
       Alert.alert(
         'Success',

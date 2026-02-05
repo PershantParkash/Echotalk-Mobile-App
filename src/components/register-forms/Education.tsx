@@ -22,6 +22,7 @@ import { RegisterSteps, UserEducation } from '../../store/user/user.types';
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
+import useUsersService from '../../services/user';
 
 interface ValidationErrors {
   institute?: string;
@@ -39,7 +40,7 @@ interface DatePickerState {
 const EducationForm: React.FC = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state: RootState) => state.user);
-
+  const { updateUser } = useUsersService();
   const [errors, setErrors] = useState<ValidationErrors[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(
@@ -167,7 +168,7 @@ const EducationForm: React.FC = () => {
     setLoading(true);
     try {
       // Add your API call here
-      // await updateUser({ educations: user.education });
+      await updateUser({ educations: user.education });
 
       Alert.alert(
         'Success',

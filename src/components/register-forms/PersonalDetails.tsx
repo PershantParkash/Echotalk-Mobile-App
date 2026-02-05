@@ -1,172 +1,332 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Text,
   View,
   TouchableOpacity,
   TextInput,
-  Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   Image,
+  PermissionsAndroid,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import { setCurrentStep } from '../../store/user/user.actions';
 import { RootState } from '../../store';
-import { RegisterSteps } from '../../store/user/user.types';
+import {
+  setCurrentStep,
+  setUpdateAppUser,
+} from '../../store/user/user.actions';
+import { RegisterSteps, UserType } from '../../store/user/user.types';
+import useUsersService from '../../services/user';
+import Toast from 'react-native-toast-message';
+import ImagePicker from 'react-native-image-crop-picker'; // Add this import
+import Feather from 'react-native-vector-icons/Feather';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/navigation';
+import { useNavigation } from '@react-navigation/native';
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MainTabs'>;
 
 const PersonalDetails = () => {
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    profileImage?: string;
+  }>({});
+
   const { user } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch();
+  const { updateUser } = useUsersService();
+  const navigation = useNavigation<NavigationProp>();
+  const handleImagePick = async () => {
+    try {
+      const image = await ImagePicker.openPicker({
+        width: 400,
+        height: 400,
+        cropping: true,
+        cropperCircleOverlay: true,
+        compressImageQuality: 0.8,
+        mediaType: 'photo',
+      });
 
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [resendTimer, setResendTimer] = useState(60);
-  const [canResend, setCanResend] = useState(false);
-  const inputRefs = useRef<(TextInput | null)[]>([]);
+      Toast.show({
+        type: 'info',
+        text1: 'Uploading...',
+        text2: 'Please wait while we upload your image.',
+      });
 
-  useEffect(() => {
-    // Start countdown timer
-    if (resendTimer > 0) {
-      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
-      return () => clearTimeout(timer);
-    } else {
-      setCanResend(true);
-    }
-  }, [resendTimer]);
-
-  const handleOtpChange = (value: string, index: number) => {
-    // Only allow numbers
-    if (value && !/^\d+$/.test(value)) return;
-
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-
-    // Auto-focus next input
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleKeyPress = (e: any, index: number) => {
-    // Handle backspace to go to previous input
-    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleResend = () => {
-    if (canResend) {
-      // Add your resend OTP logic here
-      Alert.alert('Success', 'OTP has been resent to your phone number');
-      setResendTimer(60);
-      setCanResend(false);
-      setOtp(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
+      // TODO: Replace with your actual upload logic
+      // const uploadedUrl = await uploadToS3(image);
+      
+      dispatch(setUpdateAppUser({ ...user, image: image.path }));
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Image Selected',
+        text2: 'Profile image uploaded successfully.',
+      });
+    } catch (error: any) {
+      if (error.code !== 'E_PICKER_CANCELLED') {
+        console.error('ImagePicker Error: ', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Upload Failed',
+          text2: 'Failed to select image.',
+        });
+      }
     }
   };
 
-  const handleVerify = () => {
-    const otpValue = otp.join('');
-    if (otpValue.length !== 6) {
-      Alert.alert('Error', 'Please enter complete OTP');
-      return;
+  const validate = () => {
+    let tempErrors: {
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      profileImage?: string;
+    } = {};
+
+    if (!user.firstName?.trim()) {
+      tempErrors.firstName = 'First name is required';
     }
 
-    // Add your OTP verification logic here
-    // For now, just move to next step
-    dispatch(setCurrentStep(RegisterSteps.UserType));
+    if (!user.lastName?.trim()) {
+      tempErrors.lastName = 'Last name is required';
+    }
+
+    if (!user.email?.trim()) {
+      tempErrors.email = 'Email is required';
+    } else if (!/^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/.test(user.email)) {
+      tempErrors.email = 'Enter a valid email address';
+    }
+
+    if (!user.image) {
+      tempErrors.profileImage = 'Profile image is required';
+    }
+
+    setErrors(tempErrors);
+    return Object.keys(tempErrors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!validate()) return;
+
+    setLoading(true);
+
+    try {
+      const updateUserData = {
+        fullName: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        profileImage: user.image || '',
+      };
+
+      const updatedUser = await updateUser(updateUserData);
+
+      Toast.show({
+        type: 'success',
+        text1: 'Profile Updated',
+        text2: 'Your profile details have been saved successfully.',
+      });
+
+      if (user.userType === UserType.Trainer) {
+        dispatch(setCurrentStep(RegisterSteps.Education));
+      } else {
+         navigation.replace('MainTabs', { screen: 'HomeTab' });
+      }
+    } catch (error: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Update Failed',
+        text2: error?.message || 'Profile update failed. Please try again.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleBack = () => {
-    dispatch(setCurrentStep(RegisterSteps.PhonePassword));
+    dispatch(setCurrentStep(RegisterSteps.PhoneVerification));
   };
 
-  const isOtpComplete = otp.every(digit => digit !== '');
-
   return (
-    <View className="flex-1 justify-center items-center px-6 bg-white">
-      <View className="w-full max-w-[400px]">
-        {/* <View className="mt-4 mb-8">
-             <TouchableOpacity
-                                           onPress={handleBack}
-                                           className="absolute  "
-                                         >
-                                           <Image
-                                             source={require('../../assets/Badges Arrow.png')}
-                                             className="w-10 h-10 mr-8"
-                                             resizeMode="contain"
-                                           />
-                                         </TouchableOpacity>
-
-          <Text className="text-3xl font-semibold text-center mt-2">
-            Phone Number Verification
-          </Text>
-        </View> */}
-        <View className="mt-4 h-22 ">
-          <TouchableOpacity onPress={handleBack} className="absolute  ">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      className="flex-1 bg-white"
+    >
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Header */}
+        <View className="mt-4 h-12 justify-center">
+          <TouchableOpacity
+            onPress={handleBack}
+            className="absolute top-1/2 -translate-y-1/2 p-3 z-50"
+            activeOpacity={0.7}
+          >
             <Image
               source={require('../../assets/Badges Arrow.png')}
-              className="w-10 h-10 mr-8"
+              className="w-10 h-10"
               resizeMode="contain"
             />
           </TouchableOpacity>
 
           <Text className="text-4xl font-semibold text-center">
-            Phone Number Verification
+            Personal Details
           </Text>
         </View>
 
-        <Text className="text-sm text-gray-600 mb-8 text-center">
-          OTP verification code has been sent to your provided mobile number
-          +44******0074
+        <Text className="text-base text-gray-600 mb-6 px-6 text-center">
+          Add Personal Details To Continue
         </Text>
 
-        <Text className="text-base font-medium text-gray-700 mb-3">
-          Enter OTP
-        </Text>
-
-        {/* OTP Input Boxes */}
-        <View className="flex-row justify-between mb-4">
-          {otp.map((digit, index) => (
-            <TextInput
-              key={index}
-              //   ref={(ref) => (inputRefs.current[index] = ref)}
-              value={digit}
-              onChangeText={value => handleOtpChange(value, index)}
-              onKeyPress={e => handleKeyPress(e, index)}
-              keyboardType="number-pad"
-              maxLength={1}
-              className="w-12 h-14 bg-gray-100 rounded-lg text-center text-xl font-semibold"
-              autoFocus={index === 0}
-            />
-          ))}
-        </View>
-
-        {/* Resend Code */}
-        <View className="flex-row items-center justify-center mb-6">
-          <Text className="text-sm text-gray-600">Didn't receive code? </Text>
-          <TouchableOpacity onPress={handleResend} disabled={!canResend}>
-            <Text
-              className={`text-sm font-medium ${
-                canResend ? 'text-[#5B2EC4]' : 'text-gray-400'
+        {/* Profile Image */}
+        <View className="items-center mb-6">
+          <TouchableOpacity
+            onPress={handleImagePick}
+            activeOpacity={0.7}
+            className="relative"
+          >
+            <View
+              className={`w-32 h-32 rounded-full bg-gray-300 items-center justify-center ${
+                errors.profileImage ? 'border-2 border-red-500' : ''
               }`}
             >
-              {canResend ? 'Resend Code' : `Resend in ${resendTimer}s`}
-            </Text>
+              {user.image ? (
+                <Image
+                  source={{ uri: user.image }}
+                  className="w-full h-full rounded-full"
+                  resizeMode="cover"
+                />
+              ) : (
+                <Feather name="user" size={48} color="#9CA3AF" />
+              )}
+            </View>
+
+            {/* Camera Icon */}
+            <View className="absolute bottom-0 right-0 bg-[#5B2EC4] w-10 h-10 rounded-full items-center justify-center border-2 border-white">
+              <Feather name="camera" size={20} color="#FFFFFF" />
+            </View>
           </TouchableOpacity>
+
+          {errors.profileImage && (
+            <Text className="text-red-500 text-xs mt-2">
+              {errors.profileImage}
+            </Text>
+          )}
         </View>
 
-        {/* Verify Button */}
+        {/* First Name */}
+        <View className="mb-4 px-6">
+          <Text className="text-sm font-medium text-gray-700 mb-1">
+            First Name
+          </Text>
+          <View className="relative">
+            <View className="absolute left-4 top-3 z-10">
+              <Feather name="user" size={20} color="#9CA3AF" />
+            </View>
+            <TextInput
+              className={`w-full pl-12 pr-4 py-3 rounded-lg border ${
+                errors.firstName ? 'border-red-500' : 'border-gray-300'
+              } bg-gray-50`}
+              placeholder="Madhinn"
+              placeholderTextColor="#9CA3AF"
+              value={user.firstName}
+              onChangeText={(text) =>
+                dispatch(setUpdateAppUser({ ...user, firstName: text }))
+              }
+              editable={!loading}
+            />
+          </View>
+          {errors.firstName && (
+            <Text className="text-red-500 text-xs mt-1">
+              {errors.firstName}
+            </Text>
+          )}
+        </View>
+
+        {/* Last Name */}
+        <View className="mb-4 px-6">
+          <Text className="text-sm font-medium text-gray-700 mb-1">
+            Last Name
+          </Text>
+          <View className="relative">
+            <View className="absolute left-4 top-3 z-10">
+              <Feather name="user" size={20} color="#9CA3AF" />
+            </View>
+            <TextInput
+              className={`w-full pl-12 pr-4 py-3 rounded-lg border ${
+                errors.lastName ? 'border-red-500' : 'border-gray-300'
+              } bg-gray-50`}
+              placeholder="Asghar"
+              placeholderTextColor="#9CA3AF"
+              value={user.lastName}
+              onChangeText={(text) =>
+                dispatch(setUpdateAppUser({ ...user, lastName: text }))
+              }
+              editable={!loading}
+            />
+          </View>
+          {errors.lastName && (
+            <Text className="text-red-500 text-xs mt-1">
+              {errors.lastName}
+            </Text>
+          )}
+        </View>
+
+        {/* Email */}
+        <View className="mb-4 px-6">
+          <Text className="text-sm font-medium text-gray-700 mb-1">Email</Text>
+          <View className="relative">
+            <View className="absolute left-4 top-3 z-10">
+              <Feather name="mail" size={20} color="#9CA3AF" />
+            </View>
+            <TextInput
+              className={`w-full pl-12 pr-12 py-3 rounded-lg border ${
+                errors.email ? 'border-red-500' : 'border-gray-300'
+              } bg-gray-50`}
+              placeholder="Madhinnasrghar@gmail.com"
+              placeholderTextColor="#9CA3AF"
+              value={user.email}
+              onChangeText={(text) =>
+                dispatch(setUpdateAppUser({ ...user, email: text }))
+              }
+              keyboardType="email-address"
+              autoCapitalize="none"
+              editable={!loading}
+            />
+            {user.email && !errors.email && (
+              <View className="absolute right-4 top-3">
+                <Feather name="check" size={20} color="#5B2EC4" />
+              </View>
+            )}
+          </View>
+          {errors.email && (
+            <Text className="text-red-500 text-xs mt-1">{errors.email}</Text>
+          )}
+        </View>
+
+        {/* Continue Button */}
         <TouchableOpacity
-          onPress={handleVerify}
-          disabled={!isOtpComplete}
-          className={`h-12 rounded-lg justify-center items-center ${
-            isOtpComplete ? 'bg-[#5B2EC4]' : 'bg-gray-300'
+          onPress={handleSubmit}
+          className={`mt-6 h-12 rounded-lg justify-center items-center mx-6 ${
+            loading ? 'bg-gray-400' : 'bg-[#5B2EC4]'
           }`}
+          disabled={loading}
+          activeOpacity={0.7}
         >
-          <Text className="text-white text-base font-semibold">Verify</Text>
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text className="text-white text-base font-semibold">
+              Continue
+            </Text>
+          )}
         </TouchableOpacity>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
