@@ -7,6 +7,9 @@ import Login from '../components/auth/Login';
 import Register from '../components/auth/RegisterMain';
 import TabNavigator from './TabNavigator';
 import ChatScreen from '../screens/ChatScreen'
+import DetailCourseScreen from '../screens/DetailCourseScreen'
+import SettingsScreen from '../screens/SettingsScreen';
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function AppStack() {
@@ -28,6 +31,8 @@ export default function AppStack() {
           animation: 'slide_from_right',
         }}
       />
+     <Stack.Screen name="DetailCourseScreen" component={DetailCourseScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
     </Stack.Navigator>
   ); 
 }

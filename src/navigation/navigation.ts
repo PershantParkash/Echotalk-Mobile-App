@@ -20,6 +20,8 @@ export interface ChatUser {
 export type TabParamList = {
   HomeTab: undefined;
   ChatTab: undefined;
+  BrowseCourseScreen: undefined;
+  Profile: undefined;
 };
 
 // Stack Navigator Types
@@ -33,4 +35,8 @@ export type RootStackParamList = {
     chatId: number;
     chat: Chat;
   };
+    DetailCourseScreen: {
+    courseId: number;
+  };
+  Settings: undefined;
 };

@@ -9,6 +9,7 @@
 //   KeyboardAvoidingView,
 //   Platform,
 //   ActivityIndicator,
+//   Alert,
 // } from 'react-native';
 // import {
 //   ChevronLeft,
@@ -70,6 +71,7 @@
 //   const [page, setPage] = useState(1);
 //   const [hasMore, setHasMore] = useState(true);
 //   const [loading, setLoading] = useState(false);
+//   const [sending, setSending] = useState(false);
   
 //   const scrollViewRef = useRef<ScrollView>(null);
 //   const loadingRef = useRef(false);
@@ -89,7 +91,11 @@
 //     try {
 //       loadingRef.current = true;
 //       setLoading(true);
+      
+//       console.log('Fetching messages for chat:', chatId, 'page:', pageNum);
 //       const response = await getMessages(chatId, pageNum, 20);
+      
+//       console.log('Messages response:', response);
       
 //       if (response && response.data) {
 //         const sortedMessages = response.data.reverse();
@@ -105,6 +111,7 @@
 //       }
 //     } catch (error) {
 //       console.error('Error fetching messages:', error);
+//       Alert.alert('Error', 'Failed to load messages. Please try again.');
 //     } finally {
 //       setLoading(false);
 //       loadingRef.current = false;
@@ -112,13 +119,24 @@
 //   };
 
 //   const handleSendMessage = async () => {
-//     if (newMessage.trim() === '') return;
+//     const messageContent = newMessage.trim();
+    
+//     if (messageContent === '') {
+//       console.log('Message is empty, not sending');
+//       return;
+//     }
+
+//     if (sending) {
+//       console.log('Already sending a message');
+//       return;
+//     }
 
 //     try {
-//       const messageContent = newMessage.trim();
-//       setNewMessage('');
+//       setSending(true);
+//       console.log('Sending message:', messageContent);
       
-//       await sendMessage(chatId, messageContent);
+//       // Clear input immediately for better UX
+//       setNewMessage('');
       
 //       // Optimistically add message to UI
 //       const optimisticMessage: Message = {
@@ -135,11 +153,29 @@
 //       setMessages((prev) => [...prev, optimisticMessage]);
 //       setTimeout(() => scrollToBottom(), 100);
       
+//       // Send message to server
+//       const response = await sendMessage(chatId, messageContent);
+//       console.log('Send message response:', response);
+      
 //       // Fetch latest messages to get server confirmation
-//       fetchMessages(1);
+//       await fetchMessages(1);
+      
 //     } catch (error) {
 //       console.error('Error sending message:', error);
+      
+//       // Restore the message to input on error
 //       setNewMessage(messageContent);
+      
+//       // Remove optimistic message
+//       setMessages((prev) => prev.filter(msg => msg.id !== Date.now()));
+      
+//       Alert.alert(
+//         'Error',
+//         'Failed to send message. Please try again.',
+//         [{ text: 'OK' }]
+//       );
+//     } finally {
+//       setSending(false);
 //     }
 //   };
 
@@ -290,11 +326,10 @@
 //   return (
 //     <KeyboardAvoidingView
 //       className="flex-1 bg-white"
-//       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-//       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+//       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+//       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
 //     >
-//       {/* Header */}
-//       <View className="flex-row items-center justify-between px-4 py-3 pt-12 bg-white border-b border-gray-100">
+//       <View className="flex-row items-center justify-between px-4 py-3  bg-white border-b border-gray-100">
 //         <View className="flex-row items-center flex-1">
 //           <TouchableOpacity
 //             onPress={() => navigation.goBack()}
@@ -339,6 +374,7 @@
 //         className="flex-1 px-4 py-4"
 //         showsVerticalScrollIndicator={false}
 //         onContentSizeChange={() => scrollToBottom()}
+//         keyboardShouldPersistTaps="handled"
 //       >
 //         {loading && page === 1 ? (
 //           <View className="flex-1 items-center justify-center py-8">
@@ -380,6 +416,9 @@
 //             multiline
 //             maxLength={1000}
 //             onSubmitEditing={handleSendMessage}
+//             editable={!sending}
+//             returnKeyType="send"
+//             blurOnSubmit={false}
 //           />
           
 //           <TouchableOpacity className="mx-3">
@@ -390,8 +429,13 @@
 //             <TouchableOpacity
 //               onPress={handleSendMessage}
 //               className="w-10 h-10 bg-purple-600 rounded-full items-center justify-center"
+//               disabled={sending}
 //             >
-//               <Send size={18} color="#fff" />
+//               {sending ? (
+//                 <ActivityIndicator size="small" color="#fff" />
+//               ) : (
+//                 <Send size={18} color="#fff" />
+//               )}
 //             </TouchableOpacity>
 //           ) : (
 //             <TouchableOpacity className="w-10 h-10 bg-purple-600 rounded-full items-center justify-center">
@@ -429,6 +473,7 @@ import {
   Send,
 } from 'lucide-react-native';
 import useChatsService from '../services/chat';
+import ChatSocketSingleton from '../utils/sockets/chat-socket';
 
 interface Message {
   id: number;
@@ -483,12 +528,79 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   
   const scrollViewRef = useRef<ScrollView>(null);
   const loadingRef = useRef(false);
+  const socketRef = useRef<any>(null);
 
   const { getMessages, sendMessage } = useChatsService();
 
   // Get the other user in the conversation
   const otherUser = chat.users.find((user) => user.id !== currentUserId);
 
+  // WebSocket connection effect
+ // WebSocket connection effect
+useEffect(() => {
+  console.log('🔌 Setting up WebSocket connection for chat:', chatId);
+  
+  const initializeSocket = async () => {
+    try {
+      const socket = await ChatSocketSingleton.connect();
+      socketRef.current = socket;
+
+      socket.on('connect', () => {
+        console.log('✅ Mobile chat connected:', socket.id);
+        // Join this specific chat room
+        socket.emit('joinAllChats', [chatId]);
+      });
+
+      // Listen for new messages
+      socket.on('newMessage', (message: any) => {
+        console.log('📨 New message received:', message);
+        
+        // Only update if the message is for this chat
+        if (message.chat.id === chatId) {
+          // Don't add if it's from current user (already added optimistically)
+          if (message.sender.id !== currentUserId) {
+            setMessages((prev) => {
+              // Check if message already exists to prevent duplicates
+              const messageExists = prev.some(msg => msg.id === message.id);
+              if (messageExists) {
+                return prev;
+              }
+              return [...prev, message];
+            });
+            setTimeout(() => scrollToBottom(), 100);
+          }
+        }
+      });
+
+      socket.on('disconnect', () => {
+        console.log('❌ Socket disconnected');
+      });
+
+      socket.on('error', (error: any) => {
+        console.error('❌ Socket error:', error);
+      });
+    } catch (error) {
+      console.error('Failed to initialize socket:', error);
+      Alert.alert('Connection Error', 'Failed to connect to chat. Please try again.');
+    }
+  };
+
+  initializeSocket();
+
+  // Cleanup on unmount
+  return () => {
+    console.log('🔌 Cleaning up socket connection');
+    if (socketRef.current) {
+      socketRef.current.off('newMessage');
+      socketRef.current.off('connect');
+      socketRef.current.off('disconnect');
+      socketRef.current.off('error');
+    }
+    ChatSocketSingleton.disconnect();
+  };
+}, [chatId, currentUserId]);
+
+  // Fetch initial messages
   useEffect(() => {
     fetchMessages();
   }, [chatId]);
@@ -565,8 +677,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       const response = await sendMessage(chatId, messageContent);
       console.log('Send message response:', response);
       
-      // Fetch latest messages to get server confirmation
-      await fetchMessages(1);
+      // Remove optimistic message and add the real one from server
+      setMessages((prev) => {
+        const filtered = prev.filter(msg => msg.id !== optimisticMessage.id);
+        // Check if the response message is already in the list
+        const responseExists = filtered.some(msg => msg.id === response.id);
+        if (!responseExists && response) {
+          return [...filtered, response];
+        }
+        return filtered;
+      });
       
     } catch (error) {
       console.error('Error sending message:', error);
@@ -737,14 +857,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <View className="flex-row items-center justify-between px-4 py-3  bg-white border-b border-gray-100">
+      {/* Header */}
+      <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
         <View className="flex-row items-center flex-1">
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3"
-          >
-            <ChevronLeft size={24} color="#000" />
-          </TouchableOpacity>
+            <TouchableOpacity
+                                activeOpacity={0.7}
+                                onPress={() => navigation.goBack()}
+                              >
+                                <Image
+                                  source={require('../assets/Badges Arrow.png')}
+                                  className="w-10 h-10"
+                                  resizeMode="contain"
+                                />
+                              </TouchableOpacity>
           
           <View className="relative">
             <Image
