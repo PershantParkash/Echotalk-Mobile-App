@@ -1,119 +1,3 @@
-// // import { useState } from 'react';
-// // import {
-// //   Text,
-// //   View,
-// //   TouchableOpacity,
-// //   Dimensions,
-// //   TextInput,
-// //   Image,
-// // } from 'react-native';
-// // import { useSelector, useDispatch } from 'react-redux';
-// // import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-// // import {
-// //   setCurrentStep,
-// //   setUpdateAppUser,
-// // } from '../../store/user/user.actions';
-// // import { RootState } from '../../store';
-// // import { AccountType, RegisterSteps } from '../../store/user/user.types';
-// // import SimpleLineIcons from 'react-native-vector-icons/SimpleLineIcons';
-// // import Feather from 'react-native-vector-icons/Feather';
-
-// // const PhoneVerification = () => {
-// //   const { user } = useSelector((state: RootState) => state.user);
-// //   const dispatch = useDispatch();
-
-// //     const validate = () => {
-// //     let tempErrors: { otp?: string } = {};
-
-// //     if (!user.otp) {
-// //       tempErrors.otp =
-// //         "OTP is required. Please enter the OTP sent to your phone.";
-// //     } else if (user.otp?.length !== 6) {
-// //       tempErrors.otp = "OTP must be exactly 6 digits.";
-// //     }
-
-// //     setErrors(tempErrors);
-// //     return Object.keys(tempErrors)?.length === 0;
-// //   };
-
-
-// //    const handleVerifyOtp = async () => {
-// //     if (!validate()) return;
-// //     const credential = PhoneAuthProvider.credential(
-// //       firebaseOtpVerificationId,
-// //       user.otp
-// //     );
-// //     try {
-// //       setLoading(true);
-// //       await signInWithCredential(auth, credential);
-// //       const response = await signup({
-// //         phoneNumber: `+${user.phoneNumber}`,
-// //         password: user.password,
-// //         isTrainer: user.userType === UserType.Trainer,
-// //       });
-// //       dispatch(setUpdateAppUser({ ...user, otp: "" }));
-// //       saveAccessTokenInLocalStorage(response.accessToken);
-// //       saveRefreshTokenInCookie(response.refreshToken)
-// //       dispatch(setCurrentStep(RegisterSteps.PersonalDetails));
-// //     } catch (error: any) {
-// //       toast.error("Invalid OTP. Please enter a valid 6-digit OTP.");
-// //     } finally {
-// //       setLoading(false);
-// //     }
-// //   };
-
-// //   const handleBack = () => {
-// //     dispatch(setCurrentStep(RegisterSteps.PhonePassword));
-// //   };
-
-// //   return (
-// //     <View className="flex-1 justify-center items-center px-6 bg-white">
-// //       <View className="w-full max-w-[400px]">
-// //         <View className="mt-4 h-22 ">
-// //           <TouchableOpacity onPress={handleBack} className="absolute ">
-// //             <Image
-// //               source={require('../../assets/Badges Arrow.png')}
-// //               className="w-10 h-10 mr-8"
-// //               resizeMode="contain"
-// //             />
-// //           </TouchableOpacity>
-
-// //           <Text className="text-4xl font-semibold text-center">
-// //             Phone Number Verification
-// //           </Text>
-// //         </View>
-
-// //         <Text className="text-base text-gray-600 mt-4 mb-4 text-center">
-// //           OTP verification code has been sent to your provide mobile number
-// //           {user.phoneNumber}
-// //         </Text>
-// //         <Text className="text-base font-medium text-gray-700 mb-2">
-// //           Enter OTP
-// //         </Text>
-// //         <TextInput
-// //           placeholder="Enter your OTP"
-// //           className="bg-gray-100 py-4 px-4"
-// //         />
-// //         <Text className="text-xs font-medium text-gray-700 mt-1">
-// //           Resend Code
-// //         </Text>
-
-// //         <TouchableOpacity
-// //           onPress={handleNext}
-// //           disabled={!user.accountType}
-// //           className={`mt-4 h-12 rounded-lg justify-center items-center ${
-// //             user.accountType ? 'bg-[#5B2EC4]' : 'bg-gray-300'
-// //           }`}
-// //         >
-// //           <Text className="text-white text-base font-semibold">Verify</Text>
-// //         </TouchableOpacity>
-// //       </View>
-// //     </View>
-// //   );
-// // };
-
-// // export default PhoneVerification;
-
 import { useState } from 'react';
 import {
   Text,
@@ -131,6 +15,7 @@ import { RootState } from '../../store';
 import {
   setCurrentStep,
   setUpdateAppUser,
+  setUserDetails,
   setOtpVerificationId,
 } from '../../store/user/user.actions';
 import { RegisterSteps, AccountType, UserType } from '../../store/user/user.types';
@@ -188,8 +73,8 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
       await saveTokens(response.accessToken, response.refreshToken);
 
       dispatch(setUpdateAppUser({ ...user, otp: '' }));
+      // dispatch(setUserDetails({ ...user, otp: '' }))
       dispatch(setCurrentStep(RegisterSteps.PersonalDetails));
-
       Toast.show({
         type: 'success',
         text1: 'Phone Verified',

@@ -1,178 +1,6 @@
-// // import { io, Socket } from "socket.io-client";
-// // import { getAccessToken } from "../storage"; 
-// // import { NEXT_PUBLIC_API_URL } from '@env';
-
-// // const SOCKET_URL = NEXT_PUBLIC_API_URL; 
-
-// // class ChatSocketSingleton {
-// //   private static instance: Socket | null = null;
-
-// //   private constructor() {}
-
-// //   public static async connect(): Promise<Socket> {
-// //     if (ChatSocketSingleton.instance?.connected) {
-// //       console.log("Socket already connected, reusing instance");
-// //       return ChatSocketSingleton.instance;
-// //     }
-
-// //     // Disconnect existing instance if any
-// //     if (ChatSocketSingleton.instance) {
-// //       ChatSocketSingleton.instance.disconnect();
-// //     }
-
-// //     const token = await getAccessToken();
-    
-// //     console.log("🔌 Connecting to socket:", `${SOCKET_URL}/chat`);
-// //     console.log("🔑 Using token:", token ? "Token exists" : "No token");
-    
-// //     ChatSocketSingleton.instance = io(`${SOCKET_URL}/chat`, {
-// //       query: { token },
-// //       transports: ['websocket'],
-// //       reconnection: true,
-// //       reconnectionDelay: 1000,
-// //       reconnectionDelayMax: 5000,
-// //       reconnectionAttempts: 5,
-// //     });
-
-// //     ChatSocketSingleton.instance.on("connect", () => {
-// //       console.log(
-// //         "✅ Chat socket connected with ID:",
-// //         ChatSocketSingleton.instance?.id
-// //       );
-// //     });
-
-// //     ChatSocketSingleton.instance.on("disconnect", (reason) => {
-// //       console.log("❌ Chat socket disconnected:", reason);
-// //     });
-
-// //     ChatSocketSingleton.instance.on("connect_error", (error) => {
-// //       console.error("❌ Socket connection error:", error);
-// //     });
-
-// //     ChatSocketSingleton.instance.on("error", (error: any) => {
-// //       console.error("❌ Socket error:", error);
-// //       if (error?.message === "Session expired. Please login again.") {
-// //         console.log("Session expired, logging out...");
-// //         // Optionally: auto logout user
-// //         // clearAllTokens();
-// //       }
-// //     });
-
-// //     return ChatSocketSingleton.instance;
-// //   }
-
-// //   public static getInstance(): Socket | null {
-// //     return ChatSocketSingleton.instance;
-// //   }
-
-// //   public static disconnect(): void {
-// //     if (ChatSocketSingleton.instance) {
-// //       console.log("🔌 Disconnecting chat socket");
-// //       ChatSocketSingleton.instance.disconnect();
-// //       ChatSocketSingleton.instance = null;
-// //     }
-// //   }
-// // }
-
-// // export default ChatSocketSingleton;
-
-// import { io, Socket } from "socket.io-client";
-// import { getAccessToken } from "../storage"; 
-// import { NEXT_PUBLIC_API_URL } from '@env';
-
-// const SOCKET_URL = NEXT_PUBLIC_API_URL; 
-
-// class ChatSocketSingleton {
-//   private static instance: Socket | null = null;
-
-//   private constructor() {}
-
-//   public static async connect(): Promise<Socket> {
-//     if (ChatSocketSingleton.instance?.connected) {
-//       console.log("Socket already connected, reusing instance");
-//       return ChatSocketSingleton.instance;
-//     }
-
-//     // Disconnect existing instance if any
-//     if (ChatSocketSingleton.instance) {
-//       ChatSocketSingleton.instance.disconnect();
-//     }
-
-//     const token = await getAccessToken();
-    
-//     console.log("🔌 Connecting to socket:", SOCKET_URL);
-//     console.log("🔑 Using token:", token ? "Token exists" : "No token");
-    
-//     // OPTION 1: Connect without namespace (most common)
-//     ChatSocketSingleton.instance = io(SOCKET_URL, {
-//       auth: { 
-//         token  // Use 'auth' instead of 'query' - this is the standard way in Socket.IO v3+
-//       },
-//       transports: ['websocket', 'polling'], // Add polling as fallback
-//       reconnection: true,
-//       reconnectionDelay: 1000,
-//       reconnectionDelayMax: 5000,
-//       reconnectionAttempts: 5,
-//       timeout: 10000,
-//       autoConnect: true,
-//     });
-
-//     // OPTION 2: If your server DOES have a /chat namespace, uncomment this instead:
-//     // ChatSocketSingleton.instance = io(`${SOCKET_URL}/chat`, {
-//     //   auth: { token },
-//     //   transports: ['websocket', 'polling'],
-//     //   reconnection: true,
-//     //   reconnectionDelay: 1000,
-//     //   reconnectionDelayMax: 5000,
-//     //   reconnectionAttempts: 5,
-//     //   timeout: 10000,
-//     // });
-
-//     ChatSocketSingleton.instance.on("connect", () => {
-//       console.log(
-//         "✅ Chat socket connected with ID:",
-//         ChatSocketSingleton.instance?.id
-//       );
-//     });
-
-//     ChatSocketSingleton.instance.on("disconnect", (reason) => {
-//       console.log("❌ Chat socket disconnected:", reason);
-//     });
-
-//     ChatSocketSingleton.instance.on("connect_error", (error) => {
-//       console.error("❌ Socket connection error:", error.message);
-//       console.error("Error details:", error);
-//     });
-
-//     ChatSocketSingleton.instance.on("error", (error: any) => {
-//       console.error("❌ Socket error:", error);
-//       if (error?.message === "Session expired. Please login again.") {
-//         console.log("Session expired, logging out...");
-//         // Optionally: auto logout user
-//         // clearAllTokens();
-//       }
-//     });
-
-//     return ChatSocketSingleton.instance;
-//   }
-
-//   public static getInstance(): Socket | null {
-//     return ChatSocketSingleton.instance;
-//   }
-
-//   public static disconnect(): void {
-//     if (ChatSocketSingleton.instance) {
-//       console.log("🔌 Disconnecting chat socket");
-//       ChatSocketSingleton.instance.disconnect();
-//       ChatSocketSingleton.instance = null;
-//     }
-//   }
-// }
-
-// export default ChatSocketSingleton;
 import { io, Socket } from "socket.io-client";
 import { getAccessToken } from "../storage"; 
-import { NEXT_PUBLIC_API_URL } from '@env';
+import { NEXT_PUBLIC_API_BASE } from '@env';
 
 class ChatSocketSingleton {
   private static instance: Socket | null = null;
@@ -198,12 +26,13 @@ class ChatSocketSingleton {
       const token = await getAccessToken();
       
       // Validate environment variable
-      if (!NEXT_PUBLIC_API_URL) {
+      if (!NEXT_PUBLIC_API_BASE) {
         throw new Error('NEXT_PUBLIC_API_URL is not defined. Check your .env file.');
       }
       
       // Clean the URL properly
-      const baseURL = NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+      // const baseURL = NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+      const baseURL = NEXT_PUBLIC_API_BASE;
       const socketURL = `${baseURL}/chat`;
       
       // Detailed logging
@@ -223,6 +52,7 @@ class ChatSocketSingleton {
 
       ChatSocketSingleton.instance = io(socketURL, {
         query: { token },
+          // auth: { token }, 
         transports: ['websocket', 'polling'], // Use both for better reliability
         reconnection: true,
         reconnectionDelay: 1000,
