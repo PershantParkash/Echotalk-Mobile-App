@@ -4,9 +4,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import HomeScreen from '../screens/HomeScreen';
 import MessageScreen from '../screens/MessagesScreen';
 import { TabParamList } from './navigation';
-import BrowseCourseScreen from '../screens/BrowseCourseScreen'
-import ProfileScreen from '../screens/ProfileScreen'
-// import PersonalDataScreen from '../screens/PersonalDataScreen'
+import BrowseCourseScreen from '../screens/BrowseCourseScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -15,8 +14,15 @@ export default function TabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#007AFF',
+        tabBarActiveTintColor: '#5B2EC4',
         tabBarInactiveTintColor: '#8E8E93',
+        tabBarStyle: {
+          height: 60,
+          paddingBottom: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+        },
       }}
     >
       <Tab.Screen
@@ -24,18 +30,27 @@ export default function TabNavigator() {
         component={HomeScreen}
         options={{
           tabBarLabel: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
+
       <Tab.Screen
         name="ChatTab"
         component={MessageScreen}
         options={{
           tabBarLabel: 'Chat',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubble-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'chatbubble' : 'chatbubble-outline'}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -45,25 +60,30 @@ export default function TabNavigator() {
         component={BrowseCourseScreen}
         options={{
           tabBarLabel: 'Course',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'book' : 'book-outline'}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
 
       <Tab.Screen
-  name="Profile"
-  component={ProfileScreen}
-  options={{
-    tabBarLabel: 'Profile',
-    tabBarIcon: ({ color, size }) => (
-      <Ionicons name="person-outline" size={size} color={color} />
-    ),
-  }}
-/>
-
-
-      
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'person' : 'person-outline'}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }

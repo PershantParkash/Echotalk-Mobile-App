@@ -16,41 +16,23 @@ import Feather from 'react-native-vector-icons/Feather';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import useCourseService from "../services/course";
-import useServicesService from "../services/services";
+import useCourseService from '../services/course';
+import useServicesService from '../services/services';
+import useUsersService from '../services/user';
+import { setUserDetails } from '../store/user/user.actions';
+import { useSelector, useDispatch } from 'react-redux';
+import Toast from 'react-native-toast-message';
+import { RootState } from '../store/index';
+import { Course } from '../store/course/courses.types';
+import { Service } from '../store/services/services.types';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { TabParamList } from '../navigation/navigation';
+import { useNavigation } from '@react-navigation/native';
 
-// Update interfaces to match your API response
-interface Course {
-  id: string | number;
-  title: string;
-  author?: string;
-  instructor?: string; // Alternative field name
-  price: number;
-  originalPrice?: number;
-  rating?: number;
-  reviews?: number;
-  modules?: number;
-  image?: string;
-  thumbnail?: string; // Alternative field name
-  coverImage?: string; // Alternative field name
-  progress?: number;
-  currentLesson?: number;
-  totalLessons?: number;
-}
-
-interface Service {
-  id: number;
-  name?: string;
-  title?: string;
-  description: string;
-  price: string | number;
-  originalPrice?: number;
-  bookings?: number;
-  rating?: number;
-  image?: string;
-  thumbnail?: string;
-  attachments?: string[];
-}
+type HomeScreenNavigationProp = BottomTabNavigationProp<
+  TabParamList,
+  'HomeTab'
+>;
 
 interface Category {
   id: string;
@@ -66,21 +48,27 @@ const categories: Category[] = [
   { id: '4', name: 'Business', icon: 'briefcase', library: 'Feather' },
 ];
 
-// Default placeholder image that works in React Native
-const DEFAULT_IMAGE = 'https://via.placeholder.com/300x200/7c3aed/ffffff?text=No+Image';
+const DEFAULT_IMAGE =
+  'https://via.placeholder.com/300x200/7c3aed/ffffff?text=No+Image';
 
-const stripHtml = (html: string) =>
-  html.replace(/<[^>]*>/g, '');
+const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '');
 
 const Header: React.FC = () => {
+  const { userDetails, user, firebaseOtpVerificationId } = useSelector(
+    (state: RootState) => state.user,
+  );
   return (
     <View className="px-5 pt-4 pb-2">
       <View className="flex-row justify-between items-center mb-2">
         <View>
-          <Text className="text-xl font-bold text-gray-800">Hi maahinn 👋</Text>
+          <Text className="text-xl font-bold text-gray-800">
+            Hi {userDetails.fullName || 'Guest'} 👋
+          </Text>
           <View className="flex-row items-center mt-1">
             <Text className="text-sm text-gray-600">Let's Find Your </Text>
-            <Text className="text-sm text-purple-600 font-semibold">Course!</Text>
+            <Text className="text-sm text-purple-600 font-semibold">
+              Course!
+            </Text>
           </View>
         </View>
         <View className="flex-row gap-3">
@@ -146,10 +134,13 @@ const Categories: React.FC = () => {
   );
 };
 
-const ContinueCourseCard: React.FC<{ course: Course | null }> = ({ course }) => {
+const ContinueCourseCard: React.FC<{ course: Course | null }> = ({
+  course,
+}) => {
   if (!course) return null;
 
-  const imageUri = course.image || course.thumbnail || course.coverImage || DEFAULT_IMAGE;
+  const imageUri =
+    course.image || course.thumbnail || course.coverImage || DEFAULT_IMAGE;
   const author = course.author || course.instructor || 'Unknown Instructor';
 
   return (
@@ -198,11 +189,12 @@ const ContinueCourseCard: React.FC<{ course: Course | null }> = ({ course }) => 
 };
 
 const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
-  const imageUri = course.image || course.thumbnail || course.coverImage || DEFAULT_IMAGE;
+  const imageUri =
+    course.image || course.thumbnail || course.coverImage || DEFAULT_IMAGE;
   const author = course.author || course.instructor || 'Unknown Instructor';
   const price = course.price || 0;
   const originalPrice = course.originalPrice || price;
-  const rating = Number(course.rating)  || 0;
+  const rating = Number(course.rating) || 0;
   const reviews = course.reviews || 0;
   const modules = course.modules || 0;
 
@@ -223,7 +215,10 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
       </View>
 
       <View className="p-4">
-        <Text className="text-base font-bold text-gray-800 mb-1" numberOfLines={2}>
+        <Text
+          className="text-base font-bold text-gray-800 mb-1"
+          numberOfLines={2}
+        >
           {course.title}
         </Text>
         <Text className="text-xs text-gray-500 mb-2" numberOfLines={1}>
@@ -232,28 +227,28 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
 
         <View className="flex-row items-center justify-between mb-2">
           <View className="flex-row items-center gap-2">
-            <Text className="text-lg font-bold text-purple-600">
-              ${price}
-            </Text>
+            <Text className="text-lg font-bold text-purple-600">${price}</Text>
             {originalPrice > price && (
               <Text style={styles.strikethrough}>${originalPrice}</Text>
             )}
           </View>
-          <Text className="text-xs text-gray-500">{modules} module{modules !== 1 ? 's' : ''}</Text>
+          <Text className="text-xs text-gray-500">
+            {modules} module{modules !== 1 ? 's' : ''}
+          </Text>
         </View>
 
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center">
             <Text className="text-sm font-bold text-gray-800 mr-1">
-            {rating > 0 ? rating.toFixed(1) : '0.0'}
+              {rating > 0 ? rating.toFixed(1) : '0.0'}
             </Text>
             <View className="flex-row mr-1">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <FontAwesome5 
+              {[1, 2, 3, 4, 5].map(star => (
+                <FontAwesome5
                   key={star}
-                  name="star" 
-                  size={12} 
-                  color={star <= rating ? "#FBBF24" : "#D1D5DB"} 
+                  name="star"
+                  size={12}
+                  color={star <= rating ? '#FBBF24' : '#D1D5DB'}
                   solid={star <= rating}
                 />
               ))}
@@ -261,7 +256,11 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
             <Text className="text-xs text-gray-400">({reviews})</Text>
           </View>
           <TouchableOpacity>
-            <MaterialCommunityIcons name="cards-heart-outline" size={22} color="#F87171" />
+            <MaterialCommunityIcons
+              name="cards-heart-outline"
+              size={22}
+              color="#F87171"
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -271,14 +270,18 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
 
 const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  
+
   // Get images from attachments or fallback to default
-  const images = service.attachments && service.attachments.length > 0 
-    ? service.attachments 
-    : [service.image || service.thumbnail || DEFAULT_IMAGE];
-  
+  const images =
+    service.attachments && service.attachments.length > 0
+      ? service.attachments
+      : [service.image || service.thumbnail || DEFAULT_IMAGE];
+
   const title = service.title || service.name || 'Unknown Service';
-  const price = typeof service.price === 'string' ? parseFloat(service.price) : service.price || 0;
+  const price =
+    typeof service.price === 'string'
+      ? parseFloat(service.price)
+      : service.price || 0;
   const originalPrice = service.originalPrice || price;
   const bookings = service.bookings || 0;
   const rating = service.rating || 0;
@@ -288,8 +291,8 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
     if (images.length <= 1) return;
 
     const interval = setInterval(() => {
-      setCurrentImageIndex((prevIndex) => 
-        prevIndex === images.length - 1 ? 0 : prevIndex + 1
+      setCurrentImageIndex(prevIndex =>
+        prevIndex === images.length - 1 ? 0 : prevIndex + 1,
       );
     }, 2000);
 
@@ -306,7 +309,7 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
           resizeMode="cover"
           defaultSource={{ uri: DEFAULT_IMAGE }}
         />
-        
+
         {/* Image Indicators - compact version */}
         {images.length > 1 && (
           <View className="absolute bottom-2 left-0 right-0 flex-row justify-center">
@@ -314,8 +317,8 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
               <View
                 key={index}
                 className={`h-1 rounded-full mx-0.5 ${
-                  currentImageIndex === index 
-                    ? 'bg-white w-4' 
+                  currentImageIndex === index
+                    ? 'bg-white w-4'
                     : 'bg-white/50 w-1'
                 }`}
               />
@@ -334,10 +337,13 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
       </View>
 
       <View className="p-4">
-        <Text className="text-base font-bold text-gray-800 mb-1" numberOfLines={1}>
+        <Text
+          className="text-base font-bold text-gray-800 mb-1"
+          numberOfLines={1}
+        >
           {title}
         </Text>
-        
+
         <Text className="text-xs text-gray-500 mb-2" numberOfLines={2}>
           {stripHtml(service.description)}
         </Text>
@@ -360,10 +366,15 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
 
         <View className="flex-row items-center justify-between">
           <Text className="text-sm font-bold text-gray-800">
-            {rating.toFixed(1)} <FontAwesome5 name="star" size={12} color="#FBBF24" solid />
+            {rating.toFixed(1)}{' '}
+            <FontAwesome5 name="star" size={12} color="#FBBF24" solid />
           </Text>
           <TouchableOpacity>
-            <MaterialCommunityIcons name="cards-heart-outline" size={22} color="#F87171" />
+            <MaterialCommunityIcons
+              name="cards-heart-outline"
+              size={22}
+              color="#F87171"
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -371,12 +382,23 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
   );
 };
 
-const SectionHeader: React.FC<{ title: string }> = ({ title }) => {
+const SectionHeader: React.FC<{
+  title: string;
+  onSeeAll?: () => void;
+}> = ({ title, onSeeAll }) => {
   return (
-    <View className="flex-row justify-between items-center px-5 mb-4">
-      <Text className="text-lg font-bold text-gray-800">{title}</Text>
-      <TouchableOpacity>
-        <Text className="text-sm text-purple-600 font-medium">See all</Text>
+    <View
+      style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+        marginHorizontal: 16,
+      }}
+    >
+      <Text style={{ fontSize: 20, fontWeight: 'bold' }}>{title}</Text>
+      <TouchableOpacity onPress={onSeeAll}>
+        <Text style={{ color: '#7c3aed', fontWeight: '600' }}>See all</Text>
       </TouchableOpacity>
     </View>
   );
@@ -389,16 +411,17 @@ const LoadingIndicator: React.FC = () => (
 );
 
 const HomeScreen: React.FC = () => {
+  const navigation = useNavigation<HomeScreenNavigationProp>();
   const { getAllUserCourses } = useCourseService();
   const { getAllServices } = useServicesService();
-
+  const dispatch = useDispatch();
   const [courses, setCourses] = useState<Course[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [continueCourse, setContinueCourse] = useState<Course | null>(null);
-  
+ 
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [servicesLoading, setServicesLoading] = useState(false);
-  
+  const { getUserDetails } = useUsersService();
   const [coursesPage] = useState(1);
   const [servicesPage] = useState(1);
   const coursesLimit = 10;
@@ -410,15 +433,15 @@ const HomeScreen: React.FC = () => {
       const response = await getAllUserCourses(
         coursesPage,
         coursesLimit,
-        "createdAt",
-        "DESC"
+        'createdAt',
+        'DESC',
       );
-      
+
       console.log('Course API Response:', response);
-      
+
       // Handle different possible response structures
       let courseData: Course[] = [];
-      
+
       if (Array.isArray(response)) {
         courseData = response;
       } else if (response?.data) {
@@ -426,24 +449,29 @@ const HomeScreen: React.FC = () => {
           courseData = response.data;
         } else if (response.data.data && Array.isArray(response.data.data)) {
           courseData = response.data.data;
-        } else if (response.data.courses && Array.isArray(response.data.courses)) {
+        } else if (
+          response.data.courses &&
+          Array.isArray(response.data.courses)
+        ) {
           courseData = response.data.courses;
         }
       }
-      
+
       console.log('Parsed course data:', courseData);
-      
+
       if (courseData.length > 0) {
         setCourses(courseData);
-        
+
         // Find ongoing course
-        const ongoingCourse = courseData.find(c => c.progress && c.progress > 0);
+        const ongoingCourse = courseData.find(
+          c => c.progress && c.progress > 0,
+        );
         if (ongoingCourse) {
           setContinueCourse(ongoingCourse);
         }
       }
     } catch (error) {
-      console.error("Error fetching courses:", error);
+      console.error('Error fetching courses:', error);
     } finally {
       setCoursesLoading(false);
     }
@@ -455,16 +483,16 @@ const HomeScreen: React.FC = () => {
       const response = await getAllServices(
         servicesPage,
         servicesLimit,
-        "createdAt",
-        "DESC",
-        ""
+        'createdAt',
+        'DESC',
+        '',
       );
-      
+
       console.log('Service API Response:', response);
-      
+
       // Handle different possible response structures
       let serviceData: Service[] = [];
-      
+
       if (Array.isArray(response)) {
         serviceData = response;
       } else if (response?.data) {
@@ -472,26 +500,81 @@ const HomeScreen: React.FC = () => {
           serviceData = response.data;
         } else if (response.data.data && Array.isArray(response.data.data)) {
           serviceData = response.data.data;
-        } else if (response.data.services && Array.isArray(response.data.services)) {
+        } else if (
+          response.data.services &&
+          Array.isArray(response.data.services)
+        ) {
           serviceData = response.data.services;
         }
       }
-      
+
       console.log('Parsed service data:', serviceData);
-      
+
       if (serviceData.length > 0) {
         setServices(serviceData);
       }
     } catch (error) {
-      console.error("Error fetching services:", error);
+      console.error('Error fetching services:', error);
     } finally {
       setServicesLoading(false);
     }
   }, [getAllServices, servicesPage, servicesLimit]);
 
+  const fetchUserDetails = async () => {
+    try {
+      const response = await getUserDetails();
+      dispatch(
+        setUserDetails({
+          ...response,
+          firstName: response?.fullName?.split(' ')[0] || '',
+          lastName: response?.fullName?.split(' ')[1] || '',
+          location: response?.location,
+          languages: response?.languages || [{ name: '', proficiency: '' }],
+          education: response?.educations?.length
+            ? response.educations
+            : [
+                {
+                  institute: '',
+                  areaOfStudy: '',
+                  startDate: null,
+                  endDate: null,
+                },
+              ],
+          experience: response?.experiences?.length
+            ? response.experiences
+            : [
+                {
+                  company: '',
+                  title: '',
+                  startDate: null,
+                  endDate: null,
+                },
+              ],
+          certification: response?.certifications?.length
+            ? response.certifications
+            : [
+                {
+                  certificationName: '',
+                  institute: '',
+                  startDate: null,
+                  endDate: null,
+                },
+              ],
+        }),
+      );
+    } catch (e: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Failed',
+        text2: 'Fetching profile failed',
+      });
+    }
+  };
+
   useEffect(() => {
     fetchCourses();
     fetchServices();
+    fetchUserDetails();
   }, []);
 
   return (
@@ -503,19 +586,26 @@ const HomeScreen: React.FC = () => {
 
         {continueCourse && (
           <>
-            <SectionHeader title="Continue Your courses" />
+            <SectionHeader
+              title="Continue Your courses"
+              onSeeAll={() => navigation.navigate('BrowseCourseScreen')}
+            />
             <ContinueCourseCard course={continueCourse} />
           </>
         )}
 
-        <SectionHeader title="Recommendation Course" />
+        <SectionHeader
+          title="Recommendation Course"
+          onSeeAll={() => navigation.navigate('BrowseCourseScreen')}
+        />
         {coursesLoading ? (
           <LoadingIndicator />
         ) : courses.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            className="mb-6 pl-5"
+            className="mb-6"
+            contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
           >
             {courses.map(course => (
               <CourseCard key={course.id} course={course} />
@@ -523,7 +613,9 @@ const HomeScreen: React.FC = () => {
           </ScrollView>
         ) : (
           <View className="px-5 mb-6 py-8">
-            <Text className="text-gray-500 text-center">No courses available</Text>
+            <Text className="text-gray-500 text-center">
+              No courses available
+            </Text>
           </View>
         )}
 
@@ -534,7 +626,8 @@ const HomeScreen: React.FC = () => {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            className="mb-6 pl-5"
+            className="mb-6"
+            contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
           >
             {services.map(service => (
               <ServiceCard key={service.id} service={service} />
@@ -542,7 +635,9 @@ const HomeScreen: React.FC = () => {
           </ScrollView>
         ) : (
           <View className="px-5 mb-6 py-8">
-            <Text className="text-gray-500 text-center">No services available</Text>
+            <Text className="text-gray-500 text-center">
+              No services available
+            </Text>
           </View>
         )}
 
