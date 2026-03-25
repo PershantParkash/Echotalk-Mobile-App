@@ -17,10 +17,12 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/navigation';
 import Feather from 'react-native-vector-icons/Feather';
+import { PhoneInputWithCountry } from '../ui/PhoneInputWithCountry';
 
 type LoginScreenProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export default function LoginComponent() {
+  const [countryCode, setCountryCode] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -35,7 +37,9 @@ export default function LoginComponent() {
   const validate = () => {
     let tempErrors: { phoneNumber?: string; password?: string } = {};
 
-    if (!phoneNumber) {
+    if (!countryCode?.trim()) {
+      tempErrors.phoneNumber = 'Please select a country';
+    } else if (!phoneNumber?.trim()) {
       tempErrors.phoneNumber = 'Phone number is required';
     } else if (!/^\d{10,15}$/.test(phoneNumber)) {
       tempErrors.phoneNumber = 'Enter a valid phone number (10-15 digits)';
@@ -54,20 +58,22 @@ export default function LoginComponent() {
 
     try {
       const response = await signin({
-        phoneNumber: `+${phoneNumber}`,
+        phoneNumber: `+${countryCode}${phoneNumber}`,
         password,
       });
 
+      console.log('response', response)
+
       if (response) {
         await saveTokens(response.accessToken, response.refreshToken);
-        
+
         Toast.show({
           type: 'success',
           text1: 'Login successful',
           text2: 'Welcome back! 🎉',
         });
 
-       navigation.replace('MainTabs', { screen: 'HomeTab' });
+        navigation.replace('MainTabs', { screen: 'HomeTab' });
       } else {
         Toast.show({
           type: 'error',
@@ -76,7 +82,7 @@ export default function LoginComponent() {
         });
       }
     } catch (err: any) {
-      
+
       Toast.show({
         type: 'error',
         text1: 'Login Failed',
@@ -120,38 +126,29 @@ export default function LoginComponent() {
           </View>
 
           <View className="absolute bottom-0 w-full h-[60%] bg-white rounded-t-3xl px-6 pt-8 pb-10">
-            <Text className="text-3xl font-bold text-gray-800 mb-2">Login</Text>
+            <Text className="text-[30px] font-semibold text-[#092724] mb-2">Create</Text>
             <Text className="text-base text-gray-600 mb-6">
               Welcome back, we missed you!
             </Text>
 
-            <View className="mb-4">
-              <Text className="text-sm font-medium text-gray-700 mb-2">
-                Phone Number
-              </Text>
-              <TextInput
-                className={`w-full p-4 bg-gray-50 rounded-lg border ${
-                  errors.phoneNumber ? 'border-red-500' : 'border-gray-200'
-                }`}
-                placeholder="Enter your phone number (e.g., 1234567890)"
-                placeholderTextColor="#9CA3AF"
-                value={phoneNumber}
-                onChangeText={text => {
-                  // Only allow digits
-                  const cleaned = text.replace(/\D/g, '');
-                  setPhoneNumber(cleaned);
-                  if (errors.phoneNumber) setErrors({ ...errors, phoneNumber: '' });
-                }}
-                keyboardType="phone-pad"
-                autoComplete="tel"
-                editable={!loading}
-              />
-              {errors.phoneNumber ? (
-                <Text className="text-red-500 text-xs mt-1">
-                  {errors.phoneNumber}
-                </Text>
-              ) : null}
-            </View>
+            <PhoneInputWithCountry
+              label="Phone Number"
+              countryCode={countryCode}
+              phoneNumber={phoneNumber}
+              onCountryChange={code => {
+                setCountryCode(code);
+                if (errors?.phoneNumber) setErrors({ ...errors, phoneNumber: '' });
+              }}
+              onPhoneChange={text => {
+                setPhoneNumber(text);
+                if (errors?.phoneNumber) setErrors({ ...errors, phoneNumber: '' });
+              }}
+              error={errors?.phoneNumber}
+              editable={!loading}
+              placeholder="000-0000000"
+              containerClassName="mb-4"
+              inputClassName="bg-gray-50"
+            />
 
             <View className="mb-2">
               <Text className="text-sm font-medium text-gray-700 mb-2">
@@ -159,9 +156,8 @@ export default function LoginComponent() {
               </Text>
               <View className="relative">
                 <TextInput
-                  className={`w-full p-4 bg-gray-50 rounded-lg border ${
-                    errors.password ? 'border-red-500' : 'border-gray-200'
-                  } pr-12`}
+                  className={`w-full p-4 bg-gray-50 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-200'
+                    } pr-12`}
                   placeholder="Enter your password"
                   placeholderTextColor="#9CA3AF"
                   value={password}
@@ -203,9 +199,8 @@ export default function LoginComponent() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              className={`p-4 rounded-lg mb-6 ${
-                loading ? 'bg-[#5B2EC4]/70' : 'bg-[#5B2EC4]'
-              }`}
+              className={`p-4 rounded-lg mb-6 ${loading ? 'bg-[#5B2EC4]/70' : 'bg-[#5B2EC4]'
+                }`}
               onPress={handleLogin}
               disabled={loading}
               activeOpacity={0.8}

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Image,
   TextInput,
-  SafeAreaView,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -28,6 +27,7 @@ import { Service } from '../store/services/services.types';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { TabParamList } from '../navigation/navigation';
 import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type HomeScreenNavigationProp = BottomTabNavigationProp<
   TabParamList,
@@ -316,11 +316,10 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
             {images.map((_, index) => (
               <View
                 key={index}
-                className={`h-1 rounded-full mx-0.5 ${
-                  currentImageIndex === index
+                className={`h-1 rounded-full mx-0.5 ${currentImageIndex === index
                     ? 'bg-white w-4'
                     : 'bg-white/50 w-1'
-                }`}
+                  }`}
               />
             ))}
           </View>
@@ -418,7 +417,7 @@ const HomeScreen: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [continueCourse, setContinueCourse] = useState<Course | null>(null);
- 
+
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [servicesLoading, setServicesLoading] = useState(false);
   const { getUserDetails } = useUsersService();
@@ -533,33 +532,33 @@ const HomeScreen: React.FC = () => {
           education: response?.educations?.length
             ? response.educations
             : [
-                {
-                  institute: '',
-                  areaOfStudy: '',
-                  startDate: null,
-                  endDate: null,
-                },
-              ],
+              {
+                institute: '',
+                areaOfStudy: '',
+                startDate: null,
+                endDate: null,
+              },
+            ],
           experience: response?.experiences?.length
             ? response.experiences
             : [
-                {
-                  company: '',
-                  title: '',
-                  startDate: null,
-                  endDate: null,
-                },
-              ],
+              {
+                company: '',
+                title: '',
+                startDate: null,
+                endDate: null,
+              },
+            ],
           certification: response?.certifications?.length
             ? response.certifications
             : [
-                {
-                  certificationName: '',
-                  institute: '',
-                  startDate: null,
-                  endDate: null,
-                },
-              ],
+              {
+                certificationName: '',
+                institute: '',
+                startDate: null,
+                endDate: null,
+              },
+            ],
         }),
       );
     } catch (e: any) {
