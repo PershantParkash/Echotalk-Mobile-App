@@ -10,6 +10,8 @@ const useApi = () => {
     setLoading(true);
     setError(null);
 
+    console.log('===>', axiosClient.defaults.baseURL)
+
     try {
       console.log('API Request:', {
         method: config.method,
@@ -19,12 +21,12 @@ const useApi = () => {
       });
 
       const response = await axiosClient(config);
-      
+
       // console.log('API Response:', {
       //   status: response.status,
       //   data: response.data,
       // });
-      
+
       return response.data;
     } catch (err) {
       let errorMessage = "Something went wrong";

@@ -11,6 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
+import { PhoneInputWithCountry } from '../ui/PhoneInputWithCountry';
 import { RootState } from '../../store';
 import {
   setCurrentStep,
@@ -54,7 +55,9 @@ const PhoneAndPassword = () => {
       confirmPassword?: string;
     } = {};
 
-    if (!user.phoneNumber.trim()) {
+    if (!user?.countryCode?.trim()) {
+      tempErrors.phoneNumber = 'Please select a country';
+    } else if (!user?.phoneNumber?.trim()) {
       tempErrors.phoneNumber = 'Phone number is required';
     } else if (!/^\d+$/.test(user.phoneNumber)) {
       tempErrors.phoneNumber = 'Invalid phone number (only digits allowed)';
@@ -87,8 +90,8 @@ const PhoneAndPassword = () => {
     setLoading(true);
 
     try {
-      const formattedPhone = `+${user.phoneNumber.replace(/\s/g, '')}`;
-      
+      const formattedPhone = `+${user?.countryCode ?? ''}${user?.phoneNumber?.replace(/\s/g, '') ?? ''}`;
+
       console.log('Checking if phone exists...');
       await checkPhoneNumber(formattedPhone);
       const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
@@ -97,7 +100,7 @@ const PhoneAndPassword = () => {
         throw new Error('No verification ID received');
       }
 
-      
+
       Toast.show({
         type: 'success',
         text1: 'OTP Sent',
@@ -176,28 +179,22 @@ const PhoneAndPassword = () => {
         </Text>
 
         {/* Phone Number */}
-        <View className="mb-4 px-6">
-          <Text className="text-sm font-medium text-gray-700 mb-1">
-            Phone number
-          </Text>
-          <TextInput
-            className={`w-full px-4 py-3 rounded-lg border ${
-              errors.phoneNumber ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="Enter your phone number"
-            placeholderTextColor="#9CA3AF"
-            value={user.phoneNumber}
-            onChangeText={text =>
+        <View className="px-6">
+          <PhoneInputWithCountry
+            label="Phone number"
+            countryCode={user?.countryCode ?? ''}
+            phoneNumber={user?.phoneNumber ?? ''}
+            onCountryChange={code =>
+              dispatch(setUpdateAppUser({ ...user, countryCode: code }))
+            }
+            onPhoneChange={text =>
               dispatch(setUpdateAppUser({ ...user, phoneNumber: text }))
             }
-            keyboardType="phone-pad"
+            error={errors?.phoneNumber}
             editable={!loading}
+            placeholder="000-0000000"
+            containerClassName="mb-4"
           />
-          {errors.phoneNumber && (
-            <Text className="text-red-500 text-xs mt-1">
-              {errors.phoneNumber}
-            </Text>
-          )}
         </View>
 
         {/* Password */}
@@ -207,9 +204,8 @@ const PhoneAndPassword = () => {
           </Text>
           <View className="relative">
             <TextInput
-              className={`w-full px-4 py-3 rounded-lg border ${
-                errors.password ? 'border-red-500' : 'border-gray-300'
-              } pr-12`}
+              className={`w-full px-4 py-3 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-300'
+                } pr-12`}
               placeholder="Password"
               placeholderTextColor="#9CA3AF"
               value={user.password}
@@ -245,9 +241,8 @@ const PhoneAndPassword = () => {
           </Text>
           <View className="relative">
             <TextInput
-              className={`w-full px-4 py-3 rounded-lg border ${
-                errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
-              } pr-12`}
+              className={`w-full px-4 py-3 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+                } pr-12`}
               placeholder="Confirm password"
               placeholderTextColor="#9CA3AF"
               value={user.confirmPassword}
@@ -279,9 +274,8 @@ const PhoneAndPassword = () => {
         {/* Continue Button */}
         <TouchableOpacity
           onPress={handleContinue}
-          className={`mt-2 h-12 rounded-lg justify-center items-center mx-6 ${
-            loading ? 'bg-gray-400' : 'bg-[#5B2EC4]'
-          }`}
+          className={`mt-2 h-12 rounded-lg justify-center items-center mx-6 ${loading ? 'bg-gray-400' : 'bg-[#5B2EC4]'
+            }`}
           disabled={loading}
           activeOpacity={0.7}
         >

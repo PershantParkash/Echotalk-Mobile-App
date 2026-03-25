@@ -7,11 +7,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  SafeAreaView,
   ActivityIndicator,
   Modal,
 } from 'react-native';
-import { Play, Heart, Star, Filter, X } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Play, Heart, Star, X } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useCourseService from '../services/course';
@@ -53,14 +53,14 @@ interface FilterSidebarProps {
 type CourseExploreNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 // CourseCard Component
-const CourseCard: React.FC<CourseCardProps> = ({ 
-  course, 
-  isFavorited, 
+const CourseCard: React.FC<CourseCardProps> = ({
+  course,
+  isFavorited,
   onToggleFavorite,
-  onPress 
+  onPress
 }) => {
   return (
-    <TouchableOpacity 
+    <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
       className="flex-row bg-white rounded-2xl p-4 mb-4 shadow-md"
@@ -89,7 +89,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
           <Text className="text-gray-500 text-sm mb-2">
             {course.instructor}
           </Text>
-          
+
           {/* Price */}
           <View className="flex-row items-center mb-2">
             <Text className="text-purple-600 font-bold text-lg">
@@ -128,7 +128,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
         <Text className="text-purple-600 text-xs font-medium">
           {course.modules} module
         </Text>
-        
+
         <TouchableOpacity
           onPress={(e) => {
             e.stopPropagation(); // Prevent navigation when tapping favorite
@@ -208,9 +208,9 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
       onRequestClose={onClose}
     >
       <View className="flex-1 bg-black/30">
-        <TouchableOpacity 
-          className="flex-1" 
-          activeOpacity={1} 
+        <TouchableOpacity
+          className="flex-1"
+          activeOpacity={1}
           onPress={onClose}
         />
         <View className="bg-white rounded-t-3xl h-4/5">
@@ -224,7 +224,7 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
 
           <ScrollView className="flex-1 px-5">
             {/* Clear All */}
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={clearAll}
               className="self-end py-3"
             >
@@ -240,9 +240,8 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
                   onPress={() => toggleRating(rating)}
                   className="flex-row items-center py-2"
                 >
-                  <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
-                    selectedRatings.includes(rating) ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                  }`}>
+                  <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${selectedRatings.includes(rating) ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
+                    }`}>
                     {selectedRatings.includes(rating) && (
                       <Text className="text-white text-xs">✓</Text>
                     )}
@@ -275,9 +274,8 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
                     onPress={() => togglePrice(range.min, range.max)}
                     className="flex-row items-center py-2"
                   >
-                    <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
-                      isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                    }`}>
+                    <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
+                      }`}>
                       {isSelected && (
                         <Text className="text-white text-xs">✓</Text>
                       )}
@@ -297,9 +295,8 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
                   onPress={() => toggleLevel(level)}
                   className="flex-row items-center py-2"
                 >
-                  <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
-                    selectedLevels.includes(level) ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                  }`}>
+                  <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${selectedLevels.includes(level) ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
+                    }`}>
                     {selectedLevels.includes(level) && (
                       <Text className="text-white text-xs">✓</Text>
                     )}
@@ -336,7 +333,7 @@ const CourseExploreScreen: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalCourses, setTotalCourses] = useState(0);
   const [filterVisible, setFilterVisible] = useState(false);
-  
+
   // Filter states
   const [selectedRatings, setSelectedRatings] = useState<number[]>([]);
   const [selectedPrices, setSelectedPrices] = useState<number[][]>([]);
@@ -422,7 +419,7 @@ const CourseExploreScreen: React.FC = () => {
           });
           const responses = await Promise.all(promises);
           const results = responses.flatMap((res) => res.data);
-          
+
           // Deduplicate by id
           allResults = results.filter(
             (c, idx, arr) => arr.findIndex((cc) => cc.id === c.id) === idx
@@ -463,6 +460,7 @@ const CourseExploreScreen: React.FC = () => {
     return () => {
       isMounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, debouncedSearchQuery, selectedRatings, selectedPrices, selectedLevels]);
 
   const toggleFavorite = (courseId: number) => {

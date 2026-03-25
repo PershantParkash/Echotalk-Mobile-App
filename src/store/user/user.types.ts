@@ -59,6 +59,7 @@ export type languageError = {
 export type AppUser = {
   accountType: AccountType | null;
   userType: UserType | null;
+  countryCode: string;
   phoneNumber: string;
   password: string;
   confirmPassword: string;

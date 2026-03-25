@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ChevronLeft, UserPlus } from 'lucide-react-native';
 import useChatsService from "../services/chat";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface ChatUser {
   id: number;
@@ -37,9 +38,9 @@ interface MessagesScreenProps {
   currentUserId?: number;
 }
 
-const MessagesScreen: React.FC<MessagesScreenProps> = ({ 
-  navigation, 
-  currentUserId = 1 
+const MessagesScreen: React.FC<MessagesScreenProps> = ({
+  navigation,
+  currentUserId = 1
 }) => {
   // All hooks must be at the top level - this is critical!
   const [conversations, setConversations] = useState<Chat[]>([]);
@@ -63,11 +64,11 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
       const allUsers = chats.flatMap((chat: Chat) => chat.users);
       const uniqueOnlineUsers = allUsers
         .filter((user: ChatUser) => user.id !== currentUserId && user.isOnline)
-        .filter((user: ChatUser, index: number, self: ChatUser[]) => 
+        .filter((user: ChatUser, index: number, self: ChatUser[]) =>
           self.findIndex(u => u.id === user.id) === index
         )
         .slice(0, 5); // Limit to 5 contacts
-      
+
       setOnlineContacts(uniqueOnlineUsers);
     } catch (error) {
       console.error('Error fetching chats:', error);
@@ -87,10 +88,10 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
 
     if (diffInHours < 24) {
       // Show time for messages from today
-      return date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: true 
+        hour12: true
       });
     } else if (diffInHours < 48) {
       return 'Yesterday';
@@ -99,9 +100,9 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
       return date.toLocaleDateString('en-US', { weekday: 'short' });
     } else {
       // Show date for older messages
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
       });
     }
   };
@@ -123,9 +124,9 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   const handleChatPress = (chat: Chat) => {
     // Navigate to chat detail screen
     if (navigation?.navigate) {
-      navigation.navigate('ChatScreen', { 
+      navigation.navigate('ChatScreen', {
         chatId: chat.id,
-        chat: chat 
+        chat: chat
       });
     }
     console.log('Selected chat:', chat.id);
@@ -145,102 +146,104 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   }
 
   return (
-    <View className="flex-1 bg-white">
-      {/* Header */}
-      <View className="flex-row justify-between items-center px-6 py-4">
-         <TouchableOpacity
-                             activeOpacity={0.7}
-                             onPress={() => navigation.goBack()}
-                           >
-                             <Image
-                               source={require('../assets/Badges Arrow.png')}
-                               className="w-10 h-10"
-                               resizeMode="contain"
-                             />
-                           </TouchableOpacity>
-        <Text className="text-3xl font-bold">Messages</Text>
-        <TouchableOpacity className="w-12 h-12 rounded-full bg-gray-100 items-center justify-center">
-          <UserPlus size={24} color="#000" />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView className="flex-1 bg-white">
+      <View className="">
+        {/* Header */}
+        <View className="flex-row justify-between items-center px-6 py-4">
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.goBack()}
+          >
+            <Image
+              source={require('../assets/Badges Arrow.png')}
+              className="w-10 h-10"
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
+          <Text className="text-3xl font-bold">Messages</Text>
+          <TouchableOpacity className="w-12 h-12 rounded-full bg-gray-100 items-center justify-center">
+            <UserPlus size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Online Contacts Section */}
-        {onlineContacts.length > 0 && (
-          <View className="px-6 py-4">
-            <Text className="text-2xl font-bold mb-4">Online Contacts</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-2">
-              {onlineContacts.map((contact) => (
-                <TouchableOpacity 
-                  key={contact.id} 
-                  className="items-center mx-2"
-                  onPress={() => handleContactPress(contact)}
-                >
-                  <View className="relative">
-                    <Image
-                      source={{ uri: getProfileImage(contact) }}
-                      className="w-16 h-16 rounded-full"
-                    />
-                    <View className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
-                  </View>
-                  <Text className="text-sm mt-2 font-medium" numberOfLines={1}>
-                    {getDisplayName(contact).split(' ')[0]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Messages List */}
-        <View className="px-6 py-2">
-          {conversations.length === 0 ? (
-            <View className="items-center justify-center py-12">
-              <Text className="text-gray-400 text-lg">No conversations yet</Text>
-              <Text className="text-gray-400 text-sm mt-2">Start chatting with your contacts</Text>
-            </View>
-          ) : (
-            conversations.map((chat) => {
-              const otherUser = getOtherUser(chat);
-              if (!otherUser) return null;
-
-              return (
-                <TouchableOpacity
-                  key={chat.id}
-                  className="flex-row items-center py-4 border-b border-gray-100"
-                  onPress={() => handleChatPress(chat)}
-                >
-                  <View className="relative mr-4">
-                    <Image
-                      source={{ uri: getProfileImage(otherUser) }}
-                      className="w-16 h-16 rounded-full"
-                    />
-                    {otherUser.isOnline && (
+        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+          {/* Online Contacts Section */}
+          {onlineContacts.length > 0 && (
+            <View className="px-6 py-4">
+              <Text className="text-2xl font-bold mb-4">Online Contacts</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-2">
+                {onlineContacts.map((contact) => (
+                  <TouchableOpacity
+                    key={contact.id}
+                    className="items-center mx-2"
+                    onPress={() => handleContactPress(contact)}
+                  >
+                    <View className="relative">
+                      <Image
+                        source={{ uri: getProfileImage(contact) }}
+                        className="w-16 h-16 rounded-full"
+                      />
                       <View className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
-                    )}
-                  </View>
-                  <View className="flex-1">
-                    <View className="flex-row justify-between items-start mb-1">
-                      <Text className="text-lg font-bold" numberOfLines={1}>
-                        {getDisplayName(otherUser)}
-                      </Text>
-                      {chat.lastMessage && (
-                        <Text className="text-sm text-gray-500">
-                          {formatTime(chat.lastMessage.createdAt)}
-                        </Text>
+                    </View>
+                    <Text className="text-sm mt-2 font-medium" numberOfLines={1}>
+                      {getDisplayName(contact).split(' ')[0]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Messages List */}
+          <View className="px-6 py-2">
+            {conversations.length === 0 ? (
+              <View className="items-center justify-center py-12">
+                <Text className="text-gray-400 text-lg">No conversations yet</Text>
+                <Text className="text-gray-400 text-sm mt-2">Start chatting with your contacts</Text>
+              </View>
+            ) : (
+              conversations.map((chat) => {
+                const otherUser = getOtherUser(chat);
+                if (!otherUser) return null;
+
+                return (
+                  <TouchableOpacity
+                    key={chat.id}
+                    className="flex-row items-center py-4 border-b border-gray-100"
+                    onPress={() => handleChatPress(chat)}
+                  >
+                    <View className="relative mr-4">
+                      <Image
+                        source={{ uri: getProfileImage(otherUser) }}
+                        className="w-16 h-16 rounded-full"
+                      />
+                      {otherUser.isOnline && (
+                        <View className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
                       )}
                     </View>
-                    <Text className="text-gray-500 text-base" numberOfLines={1}>
-                      {chat.lastMessage?.content || 'No messages yet'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </View>
-      </ScrollView>
-    </View>
+                    <View className="flex-1">
+                      <View className="flex-row justify-between items-start mb-1">
+                        <Text className="text-lg font-bold" numberOfLines={1}>
+                          {getDisplayName(otherUser)}
+                        </Text>
+                        {chat.lastMessage && (
+                          <Text className="text-sm text-gray-500">
+                            {formatTime(chat.lastMessage.createdAt)}
+                          </Text>
+                        )}
+                      </View>
+                      <Text className="text-gray-500 text-base" numberOfLines={1}>
+                        {chat.lastMessage?.content || 'No messages yet'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 };
 

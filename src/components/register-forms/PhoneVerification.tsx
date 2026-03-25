@@ -65,7 +65,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
       
 
       const response = await signup({
-        phoneNumber: `+${user.phoneNumber}`,
+        phoneNumber: `+${user?.countryCode ?? ''}${user?.phoneNumber ?? ''}`,
         password: user.password,
         isTrainer: user.userType === UserType.Trainer,
       });
@@ -112,7 +112,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
   const handleResendOtp = async () => {
     try {
       setLoading(true);
-      const formattedPhone = `+${user.phoneNumber.replace(/\s/g, '')}`;
+      const formattedPhone = `+${user?.countryCode ?? ''}${user?.phoneNumber?.replace(/\s/g, '') ?? ''}`;
       
       console.log('Resending OTP...');
       const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
@@ -176,7 +176,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
 
         <Text className="text-base text-gray-600 mb-6 px-6 text-center">
           OTP verification code has been sent to your provided mobile number{' '}
-          <Text className="font-semibold">+{user.phoneNumber}</Text>
+          <Text className="font-semibold">+{user?.countryCode ?? ''}{user?.phoneNumber}</Text>
         </Text>
 
         {/* OTP Input */}

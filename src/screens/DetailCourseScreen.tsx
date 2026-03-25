@@ -5,10 +5,10 @@ import {
   Image,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   Share2,
@@ -178,21 +178,19 @@ const DetailCourseScreen: React.FC = () => {
     }
 
     if (remainingMinutes > 0) {
-      timeString += `${remainingMinutes} minute${
-        remainingMinutes > 1 ? 's' : ''
-      } `;
+      timeString += `${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''
+        } `;
     }
 
     if (remainingSeconds > 0 && hours === 0) {
       // Only include seconds if it's less than an hour
-      timeString += `${remainingSeconds} second${
-        remainingSeconds > 1 ? 's' : ''
-      }`;
+      timeString += `${remainingSeconds} second${remainingSeconds > 1 ? 's' : ''
+        }`;
     }
 
     return timeString.trim() || '0 seconds';
   };
-  
+
   const calculateTotalDuration = (): number => {
     if (!course?.chapters) return 0;
 
@@ -218,10 +216,10 @@ const DetailCourseScreen: React.FC = () => {
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
@@ -239,7 +237,7 @@ const DetailCourseScreen: React.FC = () => {
               {showFullDescription
                 ? course.description.replace(/<[^>]*>/g, '') // Strip HTML tags
                 : course.description.replace(/<[^>]*>/g, '').substring(0, 200) +
-                  '...'}
+                '...'}
             </Text>
             <TouchableOpacity
               onPress={() => setShowFullDescription(!showFullDescription)}
@@ -443,15 +441,15 @@ const DetailCourseScreen: React.FC = () => {
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         <View className="px-5 pt-4 pb-2 flex-row items-center justify-between">
           <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => navigation.goBack()}
-                    >
-                      <Image
-                        source={require('../assets/Badges Arrow.png')}
-                        className="w-10 h-10"
-                        resizeMode="contain"
-                      />
-                    </TouchableOpacity>
+            activeOpacity={0.7}
+            onPress={() => navigation.goBack()}
+          >
+            <Image
+              source={require('../assets/Badges Arrow.png')}
+              className="w-10 h-10"
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
           <View className="flex-row gap-3">
             <TouchableOpacity className="w-10 h-10 items-center justify-center">
               <Share2 size={22} color="#1F2937" />
@@ -588,14 +586,12 @@ const DetailCourseScreen: React.FC = () => {
               <TouchableOpacity
                 key={tab}
                 onPress={() => setActiveTab(tab)}
-                className={`flex-1 pb-3 items-center ${
-                  activeTab === tab ? 'border-b-2 border-purple-600' : ''
-                }`}
+                className={`flex-1 pb-3 items-center ${activeTab === tab ? 'border-b-2 border-purple-600' : ''
+                  }`}
               >
                 <Text
-                  className={`text-base font-semibold ${
-                    activeTab === tab ? 'text-purple-600' : 'text-gray-400'
-                  }`}
+                  className={`text-base font-semibold ${activeTab === tab ? 'text-purple-600' : 'text-gray-400'
+                    }`}
                 >
                   {tab}
                 </Text>

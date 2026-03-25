@@ -4,9 +4,9 @@ import {
   Text,
   TouchableOpacity,
   Switch,
-  SafeAreaView,
   StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChevronLeft,
   MoreVertical,
