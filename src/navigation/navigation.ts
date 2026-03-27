@@ -34,6 +34,7 @@ export type RootStackParamList = {
   ChatScreen: {
     chatId: number;
     chat: Chat;
+    currentUserId?: number;
   };
     DetailCourseScreen: {
     courseId: number;

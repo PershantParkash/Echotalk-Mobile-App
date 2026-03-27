@@ -11,13 +11,13 @@ class ChatSocketSingleton {
 
   public static async connect(): Promise<Socket> {
     if (ChatSocketSingleton.instance?.connected) {
-      console.log("✅ Socket already connected, reusing instance");
+      // console.log("✅ Socket already connected, reusing instance");
       return ChatSocketSingleton.instance;
     }
 
     // Disconnect existing instance if any
     if (ChatSocketSingleton.instance) {
-      console.log("🔄 Disconnecting existing socket instance");
+      // console.log("🔄 Disconnecting existing socket instance");
       ChatSocketSingleton.instance.disconnect();
       ChatSocketSingleton.instance = null;
     }
@@ -36,14 +36,14 @@ class ChatSocketSingleton {
       const socketURL = `${baseURL}/chat`;
       
       // Detailed logging
-      console.log('\n==========================================');
-      console.log('🔌 SOCKET CONNECTION ATTEMPT', ChatSocketSingleton.connectionAttempts + 1);
-      console.log('==========================================');
-      console.log('📍 Base URL:', baseURL);
-      console.log('📍 Socket URL:', socketURL);
-      console.log('🔑 Token exists:', !!token);
-      console.log('🔑 Token length:', token?.length || 0);
-      console.log('==========================================\n');
+      // console.log('\n==========================================');
+      // console.log('🔌 SOCKET CONNECTION ATTEMPT', ChatSocketSingleton.connectionAttempts + 1);
+      // console.log('==========================================');
+      // console.log('📍 Base URL:', baseURL);
+      // console.log('📍 Socket URL:', socketURL);
+      // console.log('🔑 Token exists:', !!token);
+      // console.log('🔑 Token length:', token?.length || 0);
+      // console.log('==========================================\n');
       
       // Validate URL format
       if (!socketURL.startsWith('http://') && !socketURL.startsWith('https://')) {
@@ -70,81 +70,81 @@ class ChatSocketSingleton {
       // Connection successful
       ChatSocketSingleton.instance.on("connect", () => {
         ChatSocketSingleton.connectionAttempts = 0; // Reset on success
-        console.log('✅ ========================================');
-        console.log('✅ SOCKET CONNECTED SUCCESSFULLY!');
-        console.log('✅ Socket ID:', ChatSocketSingleton.instance?.id);
-        console.log('✅ Transport:', ChatSocketSingleton.instance?.io.engine.transport.name);
-        console.log('✅ ========================================\n');
+        // console.log('✅ ========================================');
+        // console.log('✅ SOCKET CONNECTED SUCCESSFULLY!');
+        // console.log('✅ Socket ID:', ChatSocketSingleton.instance?.id);
+        // console.log('✅ Transport:', ChatSocketSingleton.instance?.io.engine.transport.name);
+        // console.log('✅ ========================================\n');
       });
 
       // Connection error
       ChatSocketSingleton.instance.on("connect_error", (error: any) => {
         ChatSocketSingleton.connectionAttempts++;
         
-        console.log('❌ ========================================');
-        console.log('❌ SOCKET CONNECTION ERROR');
-        console.log('❌ ========================================');
-        console.log('Error message:', error.message || 'Unknown error');
-        console.log('Error type:', error.type || 'Unknown type');
-        console.log('Error description:', error.description || 'No description');
-        console.log('Attempt:', ChatSocketSingleton.connectionAttempts);
-        console.log('Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-        console.log('==========================================\n');
+        // console.log('❌ ========================================');
+        // console.log('❌ SOCKET CONNECTION ERROR');
+        // console.log('❌ ========================================');
+        // console.log('Error message:', error.message || 'Unknown error');
+        // console.log('Error type:', error.type || 'Unknown type');
+        // console.log('Error description:', error.description || 'No description');
+        // console.log('Attempt:', ChatSocketSingleton.connectionAttempts);
+        // console.log('Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+        // console.log('==========================================\n');
 
         // Diagnose specific errors
         if (error.message.includes('Invalid namespace')) {
-          console.log('🚨 DIAGNOSIS: Server does not have /chat namespace');
-          console.log('💡 SOLUTION: Check server configuration or remove /chat from URL');
+          // console.log('🚨 DIAGNOSIS: Server does not have /chat namespace');
+          // console.log('💡 SOLUTION: Check server configuration or remove /chat from URL');
         } else if (error.message.includes('xhr poll error') || error.message.includes('websocket error')) {
-          console.log('🚨 DIAGNOSIS: Network connectivity issue');
-          console.log('💡 SOLUTION: Check if server is running and accessible');
-          console.log('💡 Server URL:', socketURL);
+          // console.log('🚨 DIAGNOSIS: Network connectivity issue');
+          // console.log('💡 SOLUTION: Check if server is running and accessible');
+          // console.log('💡 Server URL:', socketURL);
         } else if (error.message.includes('timeout')) {
-          console.log('🚨 DIAGNOSIS: Connection timeout');
-          console.log('💡 SOLUTION: Server may be slow or unreachable');
+          // console.log('🚨 DIAGNOSIS: Connection timeout');
+          // console.log('💡 SOLUTION: Server may be slow or unreachable');
         } else if (!error.message || error.message === '{}') {
-          console.log('🚨 DIAGNOSIS: Empty error object - likely network/CORS issue');
-          console.log('💡 SOLUTION 1: Check if server is running');
-          console.log('💡 SOLUTION 2: Check CORS configuration on server');
-          console.log('💡 SOLUTION 3: If using localhost, change to your computer IP');
-          console.log('💡 Example: http://192.168.1.100:3000 instead of http://localhost:3000');
+          // console.log('🚨 DIAGNOSIS: Empty error object - likely network/CORS issue');
+          // console.log('💡 SOLUTION 1: Check if server is running');
+          // console.log('💡 SOLUTION 2: Check CORS configuration on server');
+          // console.log('💡 SOLUTION 3: If using localhost, change to your computer IP');
+          // console.log('💡 Example: http://192.168.1.100:3000 instead of http://localhost:3000');
         }
       });
 
       // Connection timeout
       ChatSocketSingleton.instance.on("connect_timeout", () => {
-        console.log('⏱️ Connection timeout after 20 seconds');
-        console.log('💡 Server might be down or unreachable at:', socketURL);
+        // console.log('⏱️ Connection timeout after 20 seconds');
+        // console.log('💡 Server might be down or unreachable at:', socketURL);
       });
 
       // Disconnection
       ChatSocketSingleton.instance.on("disconnect", (reason: string) => {
-        console.log('🔌 Socket disconnected:', reason);
+        // console.log('🔌 Socket disconnected:', reason);
         
         if (reason === 'io server disconnect') {
-          console.log('💡 Server forcefully disconnected the socket');
-          console.log('   This might be due to authentication issues');
+          // console.log('💡 Server forcefully disconnected the socket');
+          // console.log('   This might be due to authentication issues');
         } else if (reason === 'transport close') {
-          console.log('💡 Connection lost - will attempt to reconnect');
+          // console.log('💡 Connection lost - will attempt to reconnect');
         }
       });
 
       // Reconnection attempt
       ChatSocketSingleton.instance.on("reconnect_attempt", (attemptNumber: number) => {
-        console.log(`🔄 Reconnection attempt ${attemptNumber}...`);
+        // console.log(`🔄 Reconnection attempt ${attemptNumber}...`);
       });
 
       // Reconnection failed
       ChatSocketSingleton.instance.on("reconnect_failed", () => {
-        console.log('❌ Reconnection failed after all attempts');
+        // console.log('❌ Reconnection failed after all attempts');
       });
 
       // General error handler
       ChatSocketSingleton.instance.on("error", (error: any) => {
-        console.error('❌ Socket error event:', error);
+        // console.error('❌ Socket error event:', error);
         
         if (error?.message === "Session expired. Please login again.") {
-          console.log('🚨 Session expired - user needs to login again');
+          // console.log('🚨 Session expired - user needs to login again');
           // Optionally: auto logout user
           // clearAllTokens();
           // Navigate to login screen
@@ -154,12 +154,12 @@ class ChatSocketSingleton {
       return ChatSocketSingleton.instance;
 
     } catch (error: any) {
-      console.error('❌ ========================================');
-      console.error('❌ FATAL ERROR CREATING SOCKET');
-      console.error('❌ ========================================');
-      console.error('Error:', error.message);
-      console.error('Stack:', error.stack);
-      console.error('==========================================\n');
+      // console.error('❌ ========================================');
+      // console.error('❌ FATAL ERROR CREATING SOCKET');
+      // console.error('❌ ========================================');
+      // console.error('Error:', error.message);
+      // console.error('Stack:', error.stack);
+      // console.error('==========================================\n');
       
       throw error;
     }
@@ -171,7 +171,7 @@ class ChatSocketSingleton {
 
   public static disconnect(): void {
     if (ChatSocketSingleton.instance) {
-      console.log("🔌 Disconnecting chat socket");
+      // console.log("🔌 Disconnecting chat socket");
       ChatSocketSingleton.instance.disconnect();
       ChatSocketSingleton.instance = null;
       ChatSocketSingleton.connectionAttempts = 0;

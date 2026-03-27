@@ -27,7 +27,7 @@ export default function SplashComponent() {
           navigation.replace('Login'); // Send to login
         }
       } catch (error) {
-        console.error('Error checking first time user', error);
+        // console.error('Error checking first time user', error);
         navigation.replace('Login'); // fallback
       }
     };

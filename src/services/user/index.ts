@@ -5,6 +5,14 @@ import { UpdateUser } from "./types";
 const useUsersService = () => {
   const { callApi, loading, error } = useApi();
 
+  // Get all users
+  const getAllUsers = async () => {
+    return await callApi({
+      method: "get",
+      url: UsersEndpointsV1.getAllUsers,
+    });
+  };
+
   const updateUser = async (user: UpdateUser) => {
     return await callApi({
       method: "put",
@@ -35,6 +43,7 @@ const useUsersService = () => {
   };
 
   return {
+    getAllUsers,
     updateUser,
     getPurchasedCourses,
     getUserDetails,

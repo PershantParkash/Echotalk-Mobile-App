@@ -12,7 +12,6 @@ import {
   Alert,
 } from 'react-native';
 import {
-  ChevronLeft,
   Video,
   Phone,
   Paperclip,
@@ -23,6 +22,8 @@ import {
 import useChatsService from '../services/chat';
 import ChatSocketSingleton from '../utils/sockets/chat-socket';
 import SocketDebugOverlay from '../components/SocketDebugOverlay';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 interface Message {
   id: number;
@@ -56,19 +57,26 @@ interface ChatScreenProps {
     params: {
       chatId: number;
       chat: Chat;
+      currentUserId?: number;
+      initialMessages?: Message[];
     };
   };
   navigation: any;
-  currentUserId?: number;
 }
 
 const ChatScreen: React.FC<ChatScreenProps> = ({
   route,
   navigation,
-  currentUserId = 1,
 }) => {
-  const { chatId, chat } = route.params;
-  const [messages, setMessages] = useState<Message[]>([]);
+  const {
+    chatId,
+    chat,
+    currentUserId: routeCurrentUserId,
+    initialMessages = [],
+  } = route?.params ?? {};
+  const { userDetails } = useSelector((state: RootState) => state.user);
+  const currentUserId = routeCurrentUserId ?? userDetails?.id;
+  const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
   const [newMessage, setNewMessage] = useState('');
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -82,12 +90,17 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const { getMessages, sendMessage } = useChatsService();
 
   // Get the other user in the conversation
-  const otherUser = chat.users.find(user => user.id !== currentUserId);
+  const otherUser =
+    typeof currentUserId === 'number'
+      ? chat?.users?.find?.(user => user?.id !== currentUserId)
+      : chat?.users?.length === 1
+        ? chat?.users?.[0]
+        : undefined;
 
   // WebSocket connection effect
   // WebSocket connection effect
   useEffect(() => {
-    console.log('🔌 Setting up WebSocket connection for chat:', chatId);
+    // console.log('🔌 Setting up WebSocket connection for chat:', chatId);
 
     const initializeSocket = async () => {
       try {
@@ -95,19 +108,22 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         socketRef.current = socket;
 
         socket.on('connect', () => {
-          console.log('✅ Mobile chat connected:', socket.id);
+          // console.log('✅ Mobile chat connected:', socket.id);
           // Join this specific chat room
           socket.emit('joinAllChats', [chatId]);
         });
 
         // Listen for new messages
         socket.on('newMessage', (message: any) => {
-          console.log('📨 New message received:', message);
+          // console.log('📨 New message received:', message);
 
           // Only update if the message is for this chat
           if (message.chat.id === chatId) {
             // Don't add if it's from current user (already added optimistically)
-            if (message.sender.id !== currentUserId) {
+            if (
+              typeof currentUserId !== 'number' ||
+              message?.sender?.id !== currentUserId
+            ) {
               setMessages(prev => {
                 // Check if message already exists to prevent duplicates
                 const messageExists = prev.some(msg => msg.id === message.id);
@@ -122,14 +138,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         });
 
         socket.on('disconnect', () => {
-          console.log('❌ Socket disconnected');
+          // console.log('❌ Socket disconnected');
         });
 
-        socket.on('error', (error: any) => {
-          console.error('❌ Socket error:', error);
+        socket.on('error', (_error: any) => {
+          // console.error('❌ Socket error:', error);
         });
-      } catch (error) {
-        console.error('Failed to initialize socket:', error);
+      } catch {
+        // console.error('Failed to initialize socket:', error);
         Alert.alert(
           'Connection Error',
           'Failed to connect to chat. Please try again.',
@@ -141,7 +157,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
     // Cleanup on unmount
     return () => {
-      console.log('🔌 Cleaning up socket connection');
+      // console.log('🔌 Cleaning up socket connection');
       if (socketRef.current) {
         socketRef.current.off('newMessage');
         socketRef.current.off('connect');
@@ -154,8 +170,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
   // Fetch initial messages
   useEffect(() => {
+    if ((initialMessages?.length ?? 0) > 0) {
+      setHasMore((initialMessages?.length ?? 0) === 20);
+      setPage(1);
+      setTimeout(() => scrollToBottom(), 100);
+      return;
+    }
     fetchMessages();
-  }, [chatId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, initialMessages]);
 
   const fetchMessages = async (pageNum = 1) => {
     if (loadingRef.current) return;
@@ -164,10 +187,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       loadingRef.current = true;
       setLoading(true);
 
-      console.log('Fetching messages for chat:', chatId, 'page:', pageNum);
+      // console.log('Fetching messages for chat:', chatId, 'page:', pageNum);
       const response = await getMessages(chatId, pageNum, 20);
 
-      console.log('Messages response:', response);
+      // console.log('Messages response:', response);
 
       if (response && response.data) {
         const sortedMessages = response.data.reverse();
@@ -181,8 +204,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
         setHasMore(response.data.length === 20);
       }
-    } catch (error) {
-      console.error('Error fetching messages:', error);
+    } catch {
+      // console.error('Error fetching messages:', error);
       Alert.alert('Error', 'Failed to load messages. Please try again.');
     } finally {
       setLoading(false);
@@ -194,18 +217,18 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     const messageContent = newMessage.trim();
 
     if (messageContent === '') {
-      console.log('Message is empty, not sending');
+      // console.log('Message is empty, not sending');
       return;
     }
 
     if (sending) {
-      console.log('Already sending a message');
+      // console.log('Already sending a message');
       return;
     }
 
     try {
       setSending(true);
-      console.log('Sending message:', messageContent);
+      // console.log('Sending message:', messageContent);
 
       // Clear input immediately for better UX
       setNewMessage('');
@@ -216,7 +239,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         content: messageContent,
         createdAt: new Date().toISOString(),
         sender: {
-          id: currentUserId,
+          id: typeof currentUserId === 'number' ? currentUserId : 0,
           fullName: 'You',
           profileImage: null,
         },
@@ -227,7 +250,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
       // Send message to server
       const response = await sendMessage(chatId, messageContent);
-      console.log('Send message response:', response);
+      // console.log('Send message response:', response);
 
       // Remove optimistic message and add the real one from server
       setMessages(prev => {
@@ -239,8 +262,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         }
         return filtered;
       });
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch {
+      // console.error('Error sending message:', error);
 
       // Restore the message to input on error
       setNewMessage(messageContent);
@@ -342,7 +365,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   };
 
   const renderMessage = (message: Message) => {
-    const isMyMessage = message.sender.id === currentUserId;
+    const isMyMessage =
+      typeof currentUserId === 'number' && message?.sender?.id === currentUserId;
 
     return (
       <View
@@ -393,7 +417,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
   const renderMessagesWithDates = () => {
     const grouped = groupMessagesByDate();
-    const elements: JSX.Element[] = [];
+    const elements: React.ReactElement[] = [];
 
     Object.keys(grouped).forEach(date => {
       elements.push(renderDateSeparator(date));

@@ -8,7 +8,7 @@ class CallSocketSingleton {
   public static getInstance(): Socket {
     const token = getAccessToken();
     if (!token) {
-      console.warn('CallSocketSingleton: no token, skipping socket connection');
+      // console.warn('CallSocketSingleton: no token, skipping socket connection');
       return null as any;
     }
 
@@ -28,31 +28,31 @@ class CallSocketSingleton {
       });
       
       this.instance.on('connect', () => {
-        console.log('Call socket connected with ID:', this.instance!.id);
+        // console.log('Call socket connected with ID:', this.instance!.id);
       });
       
       this.instance.on('disconnect', (reason) => {
-        console.log('Call socket disconnected:', reason);
+        // console.log('Call socket disconnected:', reason);
       });
 
       // Handle authentication errors and token refresh
       this.instance.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
+        // console.error('Socket connection error:', error);
         // If it's an auth error, try with fresh token
         const freshToken = getAccessToken();
         if (freshToken && freshToken !== this.currentToken) {
-  console.log('Retrying connection with fresh token');
+  // console.log('Retrying connection with fresh token');
   this.updateAuthentication(freshToken);
    }
       });
 
       // Handle server-side auth update responses (if you implement them)
       this.instance.on('auth-updated', (response) => {
-        console.log('Server confirmed auth update:', response);
+        // console.log('Server confirmed auth update:', response);
       });
 
       this.instance.on('auth-error', (error) => {
-        console.error('Server auth error:', error);
+        // console.error('Server auth error:', error);
         // Could trigger a full reconnection here if needed
       });
     }
@@ -71,16 +71,16 @@ class CallSocketSingleton {
     // Method 2: If socket is connected, emit a custom event to update server-side auth
     if (this.instance.connected) {
       this.instance.emit('refresh-auth', { token: newToken });
-      console.log('Sent auth refresh to server');
+      // console.log('Sent auth refresh to server');
     } else {
       // Method 3: If disconnected, update query and reconnect
       // Update the handshake query for reconnection
       (this.instance as any).io.opts.query = { token: newToken };
       this.instance.connect();
-      console.log('Reconnecting with new token');
+      // console.log('Reconnecting with new token');
     }
     
-    console.log('Socket authentication updated with new token');
+    // console.log('Socket authentication updated with new token');
   }
 
   // Simplified method for axios interceptor
