@@ -122,7 +122,7 @@ export default function LoginComponent() {
           </View>
 
           <View className="absolute bottom-0 w-full h-[60%] bg-white rounded-t-3xl px-6 pt-8 pb-10">
-            <Text className="text-[30px] font-semibold text-[#092724] mb-2">Create</Text>
+            <Text className="text-[30px] font-semibold text-[#092724] mb-2">Login</Text>
             <Text className="text-base text-gray-600 mb-6">
               Welcome back, we missed you!
             </Text>

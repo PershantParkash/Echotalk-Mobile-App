@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -21,9 +21,10 @@ import {
 } from 'lucide-react-native';
 import useChatsService from '../services/chat';
 import ChatSocketSingleton from '../utils/sockets/chat-socket';
-import SocketDebugOverlay from '../components/SocketDebugOverlay';
+// import SocketDebugOverlay from '../components/SocketDebugOverlay';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Message {
   id: number;
@@ -86,6 +87,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const scrollViewRef = useRef<ScrollView>(null);
   const loadingRef = useRef(false);
   const socketRef = useRef<any>(null);
+  const initializedChatIdRef = useRef<number | null>(null);
 
   const { getMessages, sendMessage } = useChatsService();
 
@@ -168,50 +170,84 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     };
   }, [chatId, currentUserId]);
 
+  const fetchMessages = useCallback(
+    async (pageNum = 1) => {
+      if (loadingRef.current) return;
+
+      try {
+        loadingRef.current = true;
+        setLoading(true);
+
+        const response = await getMessages(chatId, pageNum, 20);
+
+        if (response && response.data) {
+          const sortedMessages = response.data.reverse();
+
+          if (pageNum === 1) {
+            setMessages(sortedMessages);
+            // Scroll after layout
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                scrollViewRef.current?.scrollToEnd?.({
+                  animated: true,
+                });
+              });
+            });
+          } else {
+            setMessages(prev => [...sortedMessages, ...prev]);
+          }
+
+          setHasMore(response.data.length === 20);
+        }
+      } catch {
+        Alert.alert('Error', 'Failed to load messages. Please try again.');
+      } finally {
+        setLoading(false);
+        loadingRef.current = false;
+      }
+    },
+    [chatId, getMessages],
+  );
+
   // Fetch initial messages
   useEffect(() => {
-    if ((initialMessages?.length ?? 0) > 0) {
-      setHasMore((initialMessages?.length ?? 0) === 20);
-      setPage(1);
-      setTimeout(() => scrollToBottom(), 100);
+    if (initializedChatIdRef.current === chatId) return;
+    initializedChatIdRef.current = chatId;
+
+    const initialCount = initialMessages?.length ?? 0;
+
+    // Reset pagination when chat changes
+    setPage(1);
+
+    if (initialCount > 0) {
+      setMessages(initialMessages ?? []);
+      setHasMore(initialCount === 20);
+
+      // Let layout happen before scrolling
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => scrollToBottom?.());
+      });
       return;
     }
-    fetchMessages();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, initialMessages]);
 
-  const fetchMessages = async (pageNum = 1) => {
-    if (loadingRef.current) return;
+    setMessages([]);
+    setHasMore(true);
+    fetchMessages(1);
+  }, [chatId, initialMessages, fetchMessages]);
 
-    try {
-      loadingRef.current = true;
-      setLoading(true);
+  // If `initialMessages` becomes available after mount, hydrate only when empty.
+  useEffect(() => {
+    const initialCount = initialMessages?.length ?? 0;
+    if (initializedChatIdRef.current !== chatId) return;
+    if (initialCount <= 0) return;
+    if ((messages?.length ?? 0) > 0) return;
 
-      // console.log('Fetching messages for chat:', chatId, 'page:', pageNum);
-      const response = await getMessages(chatId, pageNum, 20);
-
-      // console.log('Messages response:', response);
-
-      if (response && response.data) {
-        const sortedMessages = response.data.reverse();
-
-        if (pageNum === 1) {
-          setMessages(sortedMessages);
-          setTimeout(() => scrollToBottom(), 100);
-        } else {
-          setMessages(prev => [...sortedMessages, ...prev]);
-        }
-
-        setHasMore(response.data.length === 20);
-      }
-    } catch {
-      // console.error('Error fetching messages:', error);
-      Alert.alert('Error', 'Failed to load messages. Please try again.');
-    } finally {
-      setLoading(false);
-      loadingRef.current = false;
-    }
-  };
+    setMessages(initialMessages ?? []);
+    setHasMore(initialCount === 20);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => scrollToBottom?.());
+    });
+  }, [chatId, initialMessages, messages?.length]);
 
   const handleSendMessage = async () => {
     const messageContent = newMessage.trim();
@@ -430,137 +466,150 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   };
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-white"
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
-        <View className="flex-row items-center flex-1">
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.goBack()}
-          >
-            <Image
-              source={require('../assets/Badges Arrow.png')}
-              className="w-10 h-10"
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
-
-          <View className="relative">
-            <Image
-              source={{
-                uri: getProfileImage(
-                  otherUser || { profileImage: null, id: 0 },
-                ),
-              }}
-              className="w-12 h-12 rounded-full mr-3"
-            />
-            {otherUser?.isOnline && (
-              <View className="absolute right-3 bottom-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
-            )}
-          </View>
-
-          <View className="flex-1">
-            <Text className="text-lg font-bold">
-              {otherUser?.fullName || otherUser?.phoneNumber || 'Unknown'}
-            </Text>
-            <Text className="text-sm text-gray-500">{getLastSeenText()}</Text>
-          </View>
-        </View>
-
-        <View className="flex-row">
-          <TouchableOpacity className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-2">
-            <Video size={20} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center">
-            <Phone size={20} color="#000" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Messages */}
-      <ScrollView
-        ref={scrollViewRef}
-        className="flex-1 px-4 py-4"
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => scrollToBottom()}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView className="flex-1 bg-white">
+      <KeyboardAvoidingView
+        className="flex-1 bg-white"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        {loading && page === 1 ? (
-          <View className="flex-1 items-center justify-center py-8">
-            <ActivityIndicator size="large" color="#9333ea" />
+        {/* Header */}
+        <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
+          <View className="flex-row items-center flex-1">
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => navigation.goBack()}
+            >
+              <Image
+                source={require('../assets/Badges Arrow.png')}
+                className="w-10 h-10"
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+
+            <View className="relative">
+              <Image
+                source={{
+                  uri: getProfileImage(
+                    otherUser || { profileImage: null, id: 0 },
+                  ),
+                }}
+                className="w-12 h-12 rounded-full mr-3"
+              />
+              {otherUser?.isOnline && (
+                <View className="absolute right-3 bottom-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+              )}
+            </View>
+
+            <View className="flex-1">
+              <Text className="text-lg font-bold">
+                {otherUser?.fullName || otherUser?.phoneNumber || 'Unknown'}
+              </Text>
+              <Text className="text-sm text-gray-500">{getLastSeenText()}</Text>
+            </View>
           </View>
-        ) : (
-          <>
-            {hasMore && (
-              <TouchableOpacity
-                onPress={handleLoadMore}
-                className="items-center py-2 mb-4"
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#9333ea" />
-                ) : (
-                  <Text className="text-purple-600 text-sm">
-                    Load more messages
+
+          <View className="flex-row">
+            <TouchableOpacity className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-2">
+              <Video size={20} color="#000" />
+            </TouchableOpacity>
+            <TouchableOpacity className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center">
+              <Phone size={20} color="#000" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Messages */}
+        <ScrollView
+          ref={scrollViewRef}
+          className="flex-1 px-4 py-4"
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollToBottom()}
+          keyboardShouldPersistTaps="handled"
+        >
+          {loading && page === 1 ? (
+            <View className="flex-1 items-center justify-center py-8">
+              <ActivityIndicator size="large" color="#9333ea" />
+            </View>
+          ) : (
+            <>
+              {hasMore && (
+                <TouchableOpacity
+                  onPress={handleLoadMore}
+                  className="items-center py-2 mb-4"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator size="small" color="#9333ea" />
+                  ) : (
+                    <Text className="text-purple-600 text-sm">
+                      Load more messages
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              {(messages?.length ?? 0) === 0 ? (
+                <View className="flex-1 items-center justify-center py-12">
+                  <Text className="text-[#092724] text-xl font-semibold">
+                    No messages yet
                   </Text>
+                  <Text className="text-gray-400 text-sm mt-2 text-center">
+                    Send a message to start the conversation.
+                  </Text>
+                </View>
+              ) : (
+                renderMessagesWithDates()
+              )}
+            </>
+          )}
+        </ScrollView>
+
+        {/* Input Area */}
+        <View className="px-4 pb-4 pt-2 bg-white border-t border-gray-100">
+          <View className="flex-row items-center bg-gray-50 rounded-full px-4 py-2">
+            <TouchableOpacity className="mr-3">
+              <Paperclip size={22} color="#6b7280" />
+            </TouchableOpacity>
+
+            <TextInput
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Write your message"
+              placeholderTextColor="#9ca3af"
+              className="flex-1 text-base py-2"
+              multiline
+              maxLength={1000}
+              onSubmitEditing={handleSendMessage}
+              editable={!sending}
+              returnKeyType="send"
+              blurOnSubmit={false}
+            />
+
+            <TouchableOpacity className="mx-3">
+              <Camera size={22} color="#6b7280" />
+            </TouchableOpacity>
+
+            {newMessage.trim() ? (
+              <TouchableOpacity
+                onPress={handleSendMessage}
+                className="w-10 h-10 bg-purple-600 rounded-full items-center justify-center"
+                disabled={sending}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Send size={18} color="#fff" />
                 )}
               </TouchableOpacity>
+            ) : (
+              <TouchableOpacity className="w-10 h-10 bg-purple-600 rounded-full items-center justify-center">
+                <Mic size={18} color="#fff" />
+              </TouchableOpacity>
             )}
-            {renderMessagesWithDates()}
-          </>
-        )}
-      </ScrollView>
-
-      {/* Input Area */}
-      <View className="px-4 pb-4 pt-2 bg-white border-t border-gray-100">
-        <View className="flex-row items-center bg-gray-50 rounded-full px-4 py-2">
-          <TouchableOpacity className="mr-3">
-            <Paperclip size={22} color="#6b7280" />
-          </TouchableOpacity>
-
-          <TextInput
-            value={newMessage}
-            onChangeText={setNewMessage}
-            placeholder="Write your message"
-            placeholderTextColor="#9ca3af"
-            className="flex-1 text-base py-2"
-            multiline
-            maxLength={1000}
-            onSubmitEditing={handleSendMessage}
-            editable={!sending}
-            returnKeyType="send"
-            blurOnSubmit={false}
-          />
-
-          <TouchableOpacity className="mx-3">
-            <Camera size={22} color="#6b7280" />
-          </TouchableOpacity>
-
-          {newMessage.trim() ? (
-            <TouchableOpacity
-              onPress={handleSendMessage}
-              className="w-10 h-10 bg-purple-600 rounded-full items-center justify-center"
-              disabled={sending}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Send size={18} color="#fff" />
-              )}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity className="w-10 h-10 bg-purple-600 rounded-full items-center justify-center">
-              <Mic size={18} color="#fff" />
-            </TouchableOpacity>
-          )}
+          </View>
         </View>
-      </View>
-      <SocketDebugOverlay chatId={chatId} />
-    </KeyboardAvoidingView>
+        {/* <SocketDebugOverlay chatId={chatId} /> */}
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
