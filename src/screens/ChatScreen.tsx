@@ -5,26 +5,26 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import {
-  Video,
-  Phone,
-  Paperclip,
-  Camera,
-  Mic,
-  Send,
-} from 'lucide-react-native';
+import { Video, Phone } from 'lucide-react-native';
 import useChatsService from '../services/chat';
 import ChatSocketSingleton from '../utils/sockets/chat-socket';
 // import SocketDebugOverlay from '../components/SocketDebugOverlay';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ChatMessageBar from '../components/chat/ChatMessageBar';
+import useS3Upload from '../hooks/useS3Upload';
+import { pickChatImageAsset } from '../utils/chatImagePicker';
+import type { Asset } from 'react-native-image-picker';
+import {
+  getChatImageDisplayUrl,
+  mergeIncomingSocketMessage,
+} from '../utils/chatMessages';
 
 interface Message {
   id: number;
@@ -83,6 +83,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [pendingImageAsset, setPendingImageAsset] = useState<Asset | null>(null);
+
+  const { uploadImageFromUri, loading: imageUploading } = useS3Upload();
 
   const scrollViewRef = useRef<ScrollView>(null);
   const loadingRef = useRef(false);
@@ -115,28 +118,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           socket.emit('joinAllChats', [chatId]);
         });
 
-        // Listen for new messages
+        // Listen for new messages (same server event as web chat-and-talk-frontend)
         socket.on('newMessage', (message: any) => {
-          // console.log('📨 New message received:', message);
-
-          // Only update if the message is for this chat
-          if (message.chat.id === chatId) {
-            // Don't add if it's from current user (already added optimistically)
-            if (
-              typeof currentUserId !== 'number' ||
-              message?.sender?.id !== currentUserId
-            ) {
-              setMessages(prev => {
-                // Check if message already exists to prevent duplicates
-                const messageExists = prev.some(msg => msg.id === message.id);
-                if (messageExists) {
-                  return prev;
-                }
-                return [...prev, message];
-              });
-              setTimeout(() => scrollToBottom(), 100);
-            }
+          if (message?.chat?.id !== chatId) {
+            return;
           }
+          setMessages(prev =>
+            mergeIncomingSocketMessage<Message>(prev, message),
+          );
+          setTimeout(() => scrollToBottom(), 100);
         });
 
         socket.on('disconnect', () => {
@@ -262,56 +252,151 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       return;
     }
 
+    let optimisticId: number | null = null;
+
     try {
       setSending(true);
-      // console.log('Sending message:', messageContent);
-
-      // Clear input immediately for better UX
       setNewMessage('');
 
-      // Optimistically add message to UI
+      optimisticId = -Math.abs(Date.now());
       const optimisticMessage: Message = {
-        id: Date.now(),
+        id: optimisticId,
         content: messageContent,
         createdAt: new Date().toISOString(),
         sender: {
           id: typeof currentUserId === 'number' ? currentUserId : 0,
-          fullName: 'You',
-          profileImage: null,
+          fullName: userDetails?.fullName ?? 'You',
+          profileImage: userDetails?.profileImage ?? null,
         },
       };
 
       setMessages(prev => [...prev, optimisticMessage]);
       setTimeout(() => scrollToBottom(), 100);
 
-      // Send message to server
       const response = await sendMessage(chatId, messageContent);
-      // console.log('Send message response:', response);
 
-      // Remove optimistic message and add the real one from server
       setMessages(prev => {
-        const filtered = prev.filter(msg => msg.id !== optimisticMessage.id);
-        // Check if the response message is already in the list
-        const responseExists = filtered.some(msg => msg.id === response.id);
+        const filtered = prev.filter(msg => msg.id !== optimisticId);
+        const responseExists = filtered.some(msg => msg.id === response?.id);
         if (!responseExists && response) {
           return [...filtered, response];
         }
         return filtered;
       });
     } catch {
-      // console.error('Error sending message:', error);
-
-      // Restore the message to input on error
       setNewMessage(messageContent);
 
-      // Remove optimistic message
-      setMessages(prev => prev.filter(msg => msg.id !== Date.now()));
+      if (optimisticId != null) {
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticId));
+      }
 
       Alert.alert('Error', 'Failed to send message. Please try again.', [
         { text: 'OK' },
       ]);
     } finally {
       setSending(false);
+    }
+  };
+
+  /** Pick image and stage it for preview (no upload yet). */
+  const handlePickImageForPreview = async () => {
+    if (sending || imageUploading) {
+      return;
+    }
+
+    const { asset, error } = await pickChatImageAsset();
+    if (error) {
+      Alert.alert('Image', error);
+      return;
+    }
+
+    const uri = asset?.uri;
+    if (!uri) {
+      return;
+    }
+
+    const fileSize = asset?.fileSize ?? null;
+    if (typeof fileSize === 'number' && fileSize > 5 * 1024 * 1024) {
+      Alert.alert('Image too large', 'Please choose an image under 5MB.');
+      return;
+    }
+
+    setPendingImageAsset(asset);
+  };
+
+  const handleCancelPendingImage = () => {
+    setPendingImageAsset(null);
+  };
+
+  /** Upload staged image → sendMessage(chatId, public URL). */
+  const handleSendPendingImage = async () => {
+    const asset = pendingImageAsset;
+    const uri = asset?.uri;
+    if (!uri) {
+      setPendingImageAsset(null);
+      return;
+    }
+
+    const tempId = -Math.abs(Date.now());
+    const optimisticMessage: Message = {
+      id: tempId,
+      content: uri,
+      createdAt: new Date().toISOString(),
+      sender: {
+        id: typeof currentUserId === 'number' ? currentUserId : 0,
+        fullName: userDetails?.fullName ?? 'You',
+        profileImage: userDetails?.profileImage ?? null,
+      },
+    };
+
+    try {
+      setSending(true);
+      setPendingImageAsset(null);
+      setMessages(prev => [...prev, optimisticMessage]);
+      setTimeout(() => scrollToBottom(), 100);
+
+      const imageUrl = await uploadImageFromUri({
+        uri,
+        base64: asset?.base64,
+        fileName: asset?.fileName,
+        mimeType: asset?.type,
+        fileSize: asset?.fileSize ?? null,
+      });
+
+      const response = await sendMessage(chatId, imageUrl);
+
+      setMessages(prev => {
+        const filtered = prev.filter(msg => msg.id !== tempId);
+        const responseExists = filtered.some(msg => msg.id === response?.id);
+        if (!responseExists && response) {
+          return [...filtered, response];
+        }
+        return filtered;
+      });
+    } catch (e: unknown) {
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      const msg =
+        e instanceof Error ? e.message : 'Could not send image. Try again.';
+      Alert.alert('Image', msg);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSendFromBar = async () => {
+    const hasPendingImage = pendingImageAsset?.uri != null;
+    const hasText = (newMessage?.trim?.() ?? '').length > 0;
+
+    if (sending || imageUploading) {
+      return;
+    }
+
+    if (hasPendingImage) {
+      await handleSendPendingImage();
+    }
+
+    if (hasText) {
+      await handleSendMessage();
     }
   };
 
@@ -403,6 +488,24 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const renderMessage = (message: Message) => {
     const isMyMessage =
       typeof currentUserId === 'number' && message?.sender?.id === currentUserId;
+    const imageDisplayUrl = getChatImageDisplayUrl(message?.content);
+    const showImage = imageDisplayUrl != null;
+
+    const bubbleContent = showImage ? (
+      <Image
+        source={{ uri: imageDisplayUrl ?? '' }}
+        className="rounded-xl"
+        style={{ width: 260, maxWidth: '100%', aspectRatio: 1, maxHeight: 320 }}
+        resizeMode="cover"
+      />
+    ) : (
+      <Text
+        className={isMyMessage ? 'text-white' : 'text-gray-800'}
+        selectable
+      >
+        {message.content}
+      </Text>
+    );
 
     return (
       <View
@@ -419,8 +522,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               <Text className="text-sm font-semibold mb-1">
                 {message.sender.fullName || 'Unknown'}
               </Text>
-              <View className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[280px]">
-                <Text className="text-gray-800">{message.content}</Text>
+              <View
+                className={`bg-gray-100 rounded-2xl rounded-tl-sm max-w-[280px] ${showImage ? 'p-1 overflow-hidden' : 'px-4 py-3'
+                  }`}
+              >
+                {bubbleContent}
               </View>
               <Text className="text-xs text-gray-400 mt-1">
                 {formatTime(message.createdAt)}
@@ -431,8 +537,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
         {isMyMessage && (
           <View className="items-end">
-            <View className="bg-purple-600 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[280px]">
-              <Text className="text-white">{message.content}</Text>
+            <View
+              className={`bg-purple-600 rounded-2xl rounded-tr-sm max-w-[280px] ${showImage ? 'p-1 overflow-hidden' : 'px-4 py-3'
+                }`}
+            >
+              {bubbleContent}
             </View>
             <Text className="text-xs text-gray-400 mt-1">
               {formatTime(message.createdAt)}
@@ -563,50 +672,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           )}
         </ScrollView>
 
-        {/* Input Area */}
-        <View className="px-4 pb-4 pt-2 bg-white border-t border-gray-100">
-          <View className="flex-row items-center bg-gray-50 rounded-full px-4 py-2">
-            <TouchableOpacity className="mr-3">
-              <Paperclip size={22} color="#6b7280" />
-            </TouchableOpacity>
-
-            <TextInput
-              value={newMessage}
-              onChangeText={setNewMessage}
-              placeholder="Write your message"
-              placeholderTextColor="#9ca3af"
-              className="flex-1 text-base py-2"
-              multiline
-              maxLength={1000}
-              onSubmitEditing={handleSendMessage}
-              editable={!sending}
-              returnKeyType="send"
-              blurOnSubmit={false}
-            />
-
-            <TouchableOpacity className="mx-3">
-              <Camera size={22} color="#6b7280" />
-            </TouchableOpacity>
-
-            {newMessage.trim() ? (
-              <TouchableOpacity
-                onPress={handleSendMessage}
-                className="w-10 h-10 bg-purple-600 rounded-full items-center justify-center"
-                disabled={sending}
-              >
-                {sending ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Send size={18} color="#fff" />
-                )}
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity className="w-10 h-10 bg-purple-600 rounded-full items-center justify-center">
-                <Mic size={18} color="#fff" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+        <ChatMessageBar
+          value={newMessage}
+          onChangeText={setNewMessage}
+          onSend={handleSendFromBar}
+          sending={sending}
+          imageUploading={imageUploading}
+          onImagePress={handlePickImageForPreview}
+          pendingImageUri={pendingImageAsset?.uri ?? null}
+          onCancelImage={handleCancelPendingImage}
+        />
         {/* <SocketDebugOverlay chatId={chatId} /> */}
       </KeyboardAvoidingView>
     </SafeAreaView>

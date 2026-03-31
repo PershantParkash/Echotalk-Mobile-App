@@ -523,8 +523,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
         phoneNumber,
       });
 
-      console.log('response', response)
-
       Toast.show?.({
         type: 'success',
         text1: response?.contact?.message ?? 'Contact created',

@@ -37,6 +37,8 @@
 	<string></string>
 	<key>NSContactsUsageDescription</key>
 	<string>We need access to your contacts to help you start chats.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>We need access to your photos to send images in chat.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIAppFonts</key>
