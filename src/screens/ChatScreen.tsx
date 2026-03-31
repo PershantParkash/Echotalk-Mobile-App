@@ -4,13 +4,15 @@ import {
   Text,
   ScrollView,
   Image,
+  Modal,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
+  StyleSheet,
 } from 'react-native';
-import { Video, Phone } from 'lucide-react-native';
+import { Video, Phone, X } from 'lucide-react-native';
 import useChatsService from '../services/chat';
 import ChatSocketSingleton from '../utils/sockets/chat-socket';
 // import SocketDebugOverlay from '../components/SocketDebugOverlay';
@@ -84,6 +86,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [pendingImageAsset, setPendingImageAsset] = useState<Asset | null>(null);
+  const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>(
+    {},
+  );
+  const [imageViewer, setImageViewer] = useState<{
+    visible: boolean;
+    uri: string | null;
+  }>({ visible: false, uri: null });
 
   const { uploadImageFromUri, loading: imageUploading } = useS3Upload();
 
@@ -485,19 +494,60 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     return grouped;
   };
 
+  const openImageViewer = useCallback((uri: string | null) => {
+    const safeUri = uri?.trim?.() ?? '';
+    if (!safeUri?.length) {
+      return;
+    }
+    setImageViewer({ visible: true, uri: safeUri });
+  }, []);
+
+  const closeImageViewer = useCallback(() => {
+    setImageViewer(prev => ({ ...prev, visible: false }));
+  }, []);
+
   const renderMessage = (message: Message) => {
     const isMyMessage =
       typeof currentUserId === 'number' && message?.sender?.id === currentUserId;
     const imageDisplayUrl = getChatImageDisplayUrl(message?.content);
     const showImage = imageDisplayUrl != null;
+    const imageAspectRatio = showImage
+      ? imageAspectRatios?.[imageDisplayUrl ?? '']
+      : undefined;
 
     const bubbleContent = showImage ? (
-      <Image
-        source={{ uri: imageDisplayUrl ?? '' }}
-        className="rounded-xl"
-        style={{ width: 260, maxWidth: '100%', aspectRatio: 1, maxHeight: 320 }}
-        resizeMode="cover"
-      />
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => openImageViewer(imageDisplayUrl ?? null)}
+      >
+        <Image
+          source={{ uri: imageDisplayUrl ?? '' }}
+          className="rounded-xl"
+          style={[styles.chatImage, { aspectRatio: imageAspectRatio ?? 1 }]}
+          resizeMode="contain"
+          onLoad={e => {
+            const w = e?.nativeEvent?.source?.width;
+            const h = e?.nativeEvent?.source?.height;
+            if (!w || !h) {
+              return;
+            }
+            const ratio = w / h;
+            if (!Number.isFinite(ratio) || ratio <= 0) {
+              return;
+            }
+            setImageAspectRatios(prev => {
+              const key = imageDisplayUrl ?? '';
+              if (!key) {
+                return prev;
+              }
+              if (prev?.[key] === ratio) {
+                return prev;
+              }
+              return { ...prev, [key]: ratio };
+            });
+          }}
+        />
+      </TouchableOpacity>
     ) : (
       <Text
         className={isMyMessage ? 'text-white' : 'text-gray-800'}
@@ -672,6 +722,37 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           )}
         </ScrollView>
 
+        <Modal
+          visible={imageViewer?.visible ?? false}
+          transparent
+          animationType="fade"
+          onRequestClose={closeImageViewer}
+        >
+          <View style={styles.viewerBackdrop}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={styles.viewerBackdropPressable}
+              onPress={closeImageViewer}
+            />
+
+            <View style={styles.viewerContent}>
+              <TouchableOpacity
+                onPress={closeImageViewer}
+                activeOpacity={0.8}
+                style={styles.viewerCloseButton}
+              >
+                <X size={24} color="#fff" />
+              </TouchableOpacity>
+
+              <Image
+                source={{ uri: imageViewer?.uri ?? '' }}
+                style={styles.viewerImage}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+        </Modal>
+
         <ChatMessageBar
           value={newMessage}
           onChangeText={setNewMessage}
@@ -689,3 +770,40 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 };
 
 export default ChatScreen;
+
+const styles = StyleSheet.create({
+  chatImage: {
+    width: 260,
+    maxWidth: '100%',
+    maxHeight: 320,
+    backgroundColor: '#f3f4f6',
+  },
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  viewerBackdropPressable: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  viewerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewerCloseButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  viewerImage: {
+    width: '100%',
+    height: '100%',
+  },
+});

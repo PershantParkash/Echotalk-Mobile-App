@@ -66,7 +66,7 @@ const useS3Upload = () => {
         const s3 = new AWS.S3({ signatureVersion: 'v4' });
         const safeName =
           fileName?.replace?.(/[^a-zA-Z0-9._-]/g, '_') ?? 'image.jpg';
-        const key = `${Date.now()}-${safeName}`;
+        const key = `chat-uploads/${Date.now()}-${safeName}`;
         const contentType = mimeType?.trim?.() || 'image/jpeg';
 
         let body: Buffer;
