@@ -317,8 +317,8 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
               <View
                 key={index}
                 className={`h-1 rounded-full mx-0.5 ${currentImageIndex === index
-                    ? 'bg-white w-4'
-                    : 'bg-white/50 w-1'
+                  ? 'bg-white w-4'
+                  : 'bg-white/50 w-1'
                   }`}
               />
             ))}
@@ -436,7 +436,7 @@ const HomeScreen: React.FC = () => {
         'DESC',
       );
 
-      console.log('Course API Response:', response);
+      // console.log('Course API Response:', response);
 
       // Handle different possible response structures
       let courseData: Course[] = [];
@@ -456,7 +456,7 @@ const HomeScreen: React.FC = () => {
         }
       }
 
-      console.log('Parsed course data:', courseData);
+      // console.log('Parsed course data:', courseData);
 
       if (courseData.length > 0) {
         setCourses(courseData);
@@ -470,7 +470,7 @@ const HomeScreen: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error('Error fetching courses:', error);
+      // console.error('Error fetching courses:', error);
     } finally {
       setCoursesLoading(false);
     }
@@ -487,7 +487,7 @@ const HomeScreen: React.FC = () => {
         '',
       );
 
-      console.log('Service API Response:', response);
+      // console.log('Service API Response:', response);
 
       // Handle different possible response structures
       let serviceData: Service[] = [];
@@ -507,13 +507,13 @@ const HomeScreen: React.FC = () => {
         }
       }
 
-      console.log('Parsed service data:', serviceData);
+      // console.log('Parsed service data:', serviceData);
 
       if (serviceData.length > 0) {
         setServices(serviceData);
       }
     } catch (error) {
-      console.error('Error fetching services:', error);
+      // console.error('Error fetching services:', error);
     } finally {
       setServicesLoading(false);
     }

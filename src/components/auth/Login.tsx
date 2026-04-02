@@ -22,9 +22,9 @@ import { PhoneInputWithCountry } from '../ui/PhoneInputWithCountry';
 type LoginScreenProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export default function LoginComponent() {
-  const [countryCode, setCountryCode] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [password, setPassword] = useState('');
+  const [countryCode, setCountryCode] = useState('92');
+  const [phoneNumber, setPhoneNumber] = useState('3234836348');
+  const [password, setPassword] = useState('faraz123');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{
     phoneNumber?: string;
@@ -55,15 +55,11 @@ export default function LoginComponent() {
 
   const handleLogin = async () => {
     if (!validate()) return;
-
     try {
       const response = await signin({
         phoneNumber: `+${countryCode}${phoneNumber}`,
         password,
       });
-
-      console.log('response', response)
-
       if (response) {
         await saveTokens(response.accessToken, response.refreshToken);
 
@@ -126,7 +122,7 @@ export default function LoginComponent() {
           </View>
 
           <View className="absolute bottom-0 w-full h-[60%] bg-white rounded-t-3xl px-6 pt-8 pb-10">
-            <Text className="text-[30px] font-semibold text-[#092724] mb-2">Create</Text>
+            <Text className="text-[30px] font-semibold text-[#092724] mb-2">Login</Text>
             <Text className="text-base text-gray-600 mb-6">
               Welcome back, we missed you!
             </Text>
@@ -156,7 +152,7 @@ export default function LoginComponent() {
               </Text>
               <View className="relative">
                 <TextInput
-                  className={`w-full p-4 bg-gray-50 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-200'
+                  className={`w-full p-4 text-[#000000] bg-gray-50 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-200'
                     } pr-12`}
                   placeholder="Enter your password"
                   placeholderTextColor="#9CA3AF"

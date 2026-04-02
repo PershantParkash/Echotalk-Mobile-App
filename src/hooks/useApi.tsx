@@ -10,15 +10,15 @@ const useApi = () => {
     setLoading(true);
     setError(null);
 
-    console.log('===>', axiosClient.defaults.baseURL)
+    // console.log('===>', axiosClient.defaults.baseURL)
 
     try {
-      console.log('API Request:', {
-        method: config.method,
-        url: config.url,
-        baseURL: axiosClient.defaults.baseURL,
-        fullURL: `${axiosClient.defaults.baseURL}${config.url}`,
-      });
+      // console.log('API Request:', {
+      //   method: config.method,
+      //   url: config.url,
+      //   baseURL: axiosClient.defaults.baseURL,
+      //   fullURL: `${axiosClient.defaults.baseURL}${config.url}`,
+      // });
 
       const response = await axiosClient(config);
 

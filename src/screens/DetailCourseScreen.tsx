@@ -138,7 +138,7 @@ const DetailCourseScreen: React.FC = () => {
       const response = await getCourseDetails(courseId);
       setCourse(response);
     } catch (err) {
-      console.error('Error fetching course details:', err);
+      // console.error('Error fetching course details:', err);
       setError('Failed to load course details. Please try again.');
     } finally {
       setLoading(false);
@@ -159,7 +159,7 @@ const DetailCourseScreen: React.FC = () => {
         setAverageRating(average);
       }
     } catch (err) {
-      console.error('Error fetching course reviews:', err);
+      // console.error('Error fetching course reviews:', err);
       // Optionally set an error state or keep reviews empty
     }
   };

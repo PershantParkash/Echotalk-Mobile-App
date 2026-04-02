@@ -70,7 +70,7 @@ const PersonalDetails = () => {
       });
     } catch (error: any) {
       if (error.code !== 'E_PICKER_CANCELLED') {
-        console.error('ImagePicker Error: ', error);
+        // console.error('ImagePicker Error: ', error);
         Toast.show({
           type: 'error',
           text1: 'Upload Failed',

@@ -450,7 +450,7 @@ const CourseExploreScreen: React.FC = () => {
         setTotalCourses(total);
       } catch (error) {
         if (isMounted) {
-          console.error('Error fetching courses:', error);
+          // console.error('Error fetching courses:', error);
         }
       }
     };

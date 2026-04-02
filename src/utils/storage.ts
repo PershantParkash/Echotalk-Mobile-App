@@ -24,7 +24,7 @@ export const saveTokens = async (
       }
     );
   } catch (error) {
-    console.error('Error saving tokens:', error);
+    // console.error('Error saving tokens:', error);
   }
 };
 
@@ -42,7 +42,7 @@ export const getAccessToken = async (): Promise<string | null> => {
     const tokens: Tokens = JSON.parse(credentials.password);
     return tokens.accessToken;
   } catch (error) {
-    console.error('Error getting access token:', error);
+    // console.error('Error getting access token:', error);
     return null;
   }
 };
@@ -61,7 +61,7 @@ export const getRefreshToken = async (): Promise<string | null> => {
     const tokens: Tokens = JSON.parse(credentials.password);
     return tokens.refreshToken;
   } catch (error) {
-    console.error('Error getting refresh token:', error);
+    // console.error('Error getting refresh token:', error);
     return null;
   }
 };
@@ -73,6 +73,6 @@ export const clearAllTokens = async (): Promise<void> => {
   try {
     await Keychain.resetGenericPassword({ service: SERVICE_NAME });
   } catch (error) {
-    console.error('Error clearing tokens:', error);
+    // console.error('Error clearing tokens:', error);
   }
 };

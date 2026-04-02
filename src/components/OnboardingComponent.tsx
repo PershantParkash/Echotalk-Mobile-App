@@ -47,7 +47,7 @@ export default function OnboardingComponent() {
       await AsyncStorage.setItem('hasLaunched', 'true');
       navigation.replace('Login'); // replace so user can't go back
     } catch (error) {
-      console.error('Error finishing onboarding', error);
+      // console.error('Error finishing onboarding', error);
       navigation.replace('Login');
     }
   };

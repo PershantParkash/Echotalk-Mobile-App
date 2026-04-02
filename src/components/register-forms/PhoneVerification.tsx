@@ -82,7 +82,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
       });
 
     } catch (error: any) {
-      console.error('OTP verification error:', error);
+      // console.error('OTP verification error:', error);
 
       if (error?.code === 'auth/invalid-verification-code') {
         Toast.show({
@@ -114,7 +114,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
       setLoading(true);
       const formattedPhone = `+${user?.countryCode ?? ''}${user?.phoneNumber?.replace(/\s/g, '') ?? ''}`;
       
-      console.log('Resending OTP...');
+      // console.log('Resending OTP...');
       const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
 
       if (!confirmation?.verificationId) {
@@ -132,7 +132,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
       });
 
     } catch (error: any) {
-      console.error('Resend OTP error:', error);
+      // console.error('Resend OTP error:', error);
       Toast.show({
         type: 'error',
         text1: 'Resend Failed',

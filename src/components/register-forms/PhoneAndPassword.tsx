@@ -92,7 +92,7 @@ const PhoneAndPassword = () => {
     try {
       const formattedPhone = `+${user?.countryCode ?? ''}${user?.phoneNumber?.replace(/\s/g, '') ?? ''}`;
 
-      console.log('Checking if phone exists...');
+      // console.log('Checking if phone exists...');
       await checkPhoneNumber(formattedPhone);
       const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
 
@@ -111,7 +111,7 @@ const PhoneAndPassword = () => {
       dispatch(setCurrentStep(RegisterSteps.PhoneVerification));
 
     } catch (e: any) {
-      console.error('Registration error:', e);
+      // console.error('Registration error:', e);
 
       if (e?.message?.includes('already exists') || e === 'Error: Phone number already exists') {
         Toast.show({
@@ -204,7 +204,7 @@ const PhoneAndPassword = () => {
           </Text>
           <View className="relative">
             <TextInput
-              className={`w-full px-4 py-3 rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-300'
+              className={`w-full px-4 py-3 text-[#000000] rounded-lg border ${errors.password ? 'border-red-500' : 'border-gray-300'
                 } pr-12`}
               placeholder="Password"
               placeholderTextColor="#9CA3AF"
@@ -241,7 +241,7 @@ const PhoneAndPassword = () => {
           </Text>
           <View className="relative">
             <TextInput
-              className={`w-full px-4 py-3 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+              className={`w-full px-4 py-3 text-[#000000] rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
                 } pr-12`}
               placeholder="Confirm password"
               placeholderTextColor="#9CA3AF"
