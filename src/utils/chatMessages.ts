@@ -8,6 +8,9 @@ export interface ChatMessageShape {
     profileImage: string | null;
   };
   isCallMessage?: boolean;
+  callStatus?: string | null;
+  callDuration?: number | null;
+  callSummary?: string | null;
 }
 
 /**
@@ -136,6 +139,23 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
       profileImage: incoming?.sender?.profileImage ?? null,
     },
     isCallMessage: Boolean(incoming?.isCallMessage),
+    callStatus:
+      typeof incoming?.callStatus === 'string' ? incoming.callStatus : null,
+    callDuration: (() => {
+      const v = incoming?.callDuration;
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        return v;
+      }
+      if (v != null) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    })(),
+    callSummary:
+      typeof incoming?.callSummary === 'string'
+        ? incoming.callSummary
+        : incoming?.callSummary ?? null,
   } as T;
 
   return [...cleared, next];

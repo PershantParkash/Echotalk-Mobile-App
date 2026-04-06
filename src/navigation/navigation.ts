@@ -1,4 +1,5 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
+import type { IncomingCallPayload } from '../types/incomingCall';
 
 // Define the Chat type
 export interface Chat {
@@ -36,8 +37,12 @@ export type RootStackParamList = {
     chat: Chat;
     currentUserId?: number;
   };
-    DetailCourseScreen: {
+  DetailCourseScreen: {
     courseId: number;
   };
   Settings: undefined;
+  CallScreen: {
+    answerIncoming?: boolean;
+    callPayload?: IncomingCallPayload;
+  };
 };

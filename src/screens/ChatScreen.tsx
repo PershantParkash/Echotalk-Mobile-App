@@ -15,11 +15,13 @@ import {
 import { Video, Phone, X } from 'lucide-react-native';
 import useChatsService from '../services/chat';
 import ChatSocketSingleton from '../utils/sockets/chat-socket';
+import CallSocketSingleton from '../utils/sockets/call-socket';
 // import SocketDebugOverlay from '../components/SocketDebugOverlay';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChatMessageBar from '../components/chat/ChatMessageBar';
+import CallMessageCard from '../components/chat/CallMessageCard';
 import useS3Upload from '../hooks/useS3Upload';
 import { pickChatImageAsset } from '../utils/chatImagePicker';
 import type { Asset } from 'react-native-image-picker';
@@ -27,6 +29,7 @@ import {
   getChatImageDisplayUrl,
   mergeIncomingSocketMessage,
 } from '../utils/chatMessages';
+import { ensureAudioPermission, ensureVideoPermission } from '../utils/permissions';
 
 interface Message {
   id: number;
@@ -38,6 +41,9 @@ interface Message {
     profileImage: string | null;
   };
   isCallMessage?: boolean;
+  callStatus?: string | null;
+  callDuration?: number | null;
+  callSummary?: string | null;
 }
 
 interface ChatUser {
@@ -509,6 +515,40 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const renderMessage = (message: Message) => {
     const isMyMessage =
       typeof currentUserId === 'number' && message?.sender?.id === currentUserId;
+
+    if (message?.isCallMessage) {
+      return (
+        <View
+          key={message.id}
+          className={`mb-4 ${isMyMessage ? 'items-end' : 'items-start'}`}
+        >
+          {!isMyMessage && (
+            <View className="flex-row items-start mb-2">
+              <Image
+                source={{ uri: getProfileImage(message.sender) }}
+                className="w-10 h-10 rounded-full mr-2"
+              />
+              <View className="flex-1 min-w-0 max-w-[92%]">
+                <Text className="text-sm font-semibold mb-1 text-gray-900">
+                  {message.sender.fullName || 'Unknown'}
+                </Text>
+                <CallMessageCard
+                  message={message}
+                  formatMessageTime={formatTime}
+                />
+              </View>
+            </View>
+          )}
+          {isMyMessage && (
+            <CallMessageCard
+              message={message}
+              formatMessageTime={formatTime}
+            />
+          )}
+        </View>
+      );
+    }
+
     const imageDisplayUrl = getChatImageDisplayUrl(message?.content);
     const showImage = imageDisplayUrl != null;
     const imageAspectRatio = showImage
@@ -624,6 +664,72 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     return elements;
   };
 
+  const generateRoomName = (fromId: number, toId: number): string => {
+    const a = Number(fromId);
+    const b = Number(toId);
+    return a < b ? `${a}_${b}` : `${b}_${a}`;
+  };
+
+  const startCall = async (callType: 'audio' | 'video') => {
+    if (typeof currentUserId !== 'number' || !otherUser || !userDetails) {
+      return;
+    }
+
+    try {
+      const hasAudio = await ensureAudioPermission();
+      if (!hasAudio) {
+        Alert.alert('Permission', 'Microphone permission is required for calls.');
+        return;
+      }
+
+      if (callType === 'video') {
+        const hasVideo = await ensureVideoPermission();
+        if (!hasVideo) {
+          Alert.alert('Permission', 'Camera permission is required for video calls.');
+          return;
+        }
+      }
+
+      const socket = await CallSocketSingleton.connect();
+      const fromId = currentUserId;
+      const toId = otherUser.id;
+      const roomName = generateRoomName(fromId, toId);
+
+      const callerName = userDetails.fullName ?? '';
+      const callerProfileImage = userDetails.profileImage ?? '';
+      const calleeName = otherUser.fullName ?? otherUser.phoneNumber;
+      const calleeProfileImage = otherUser.profileImage ?? '';
+
+      socket.emit?.('callUser', {
+        from: String(fromId),
+        to: String(toId),
+        callerName,
+        callerProfileImage,
+        calleeProfileImage,
+        calleeName,
+        roomName,
+        startTime: new Date(),
+        callLogId: null,
+        callType,
+      });
+
+      navigation?.navigate?.('CallScreen', {});
+    } catch {
+      Alert.alert(
+        'Call error',
+        'Unable to start the call right now. Please try again.',
+      );
+    }
+  };
+
+  const handleStartAudioCall = () => {
+    startCall('audio');
+  };
+
+  const handleStartVideoCall = () => {
+    startCall('video');
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-white">
       <KeyboardAvoidingView
@@ -668,10 +774,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           </View>
 
           <View className="flex-row">
-            <TouchableOpacity className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-2">
+            <TouchableOpacity
+              className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-2"
+              onPress={handleStartVideoCall}
+            >
               <Video size={20} color="#000" />
             </TouchableOpacity>
-            <TouchableOpacity className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center">
+            <TouchableOpacity
+              className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
+              onPress={handleStartAudioCall}
+            >
               <Phone size={20} color="#000" />
             </TouchableOpacity>
           </View>

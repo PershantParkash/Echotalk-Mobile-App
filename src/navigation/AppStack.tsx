@@ -9,6 +9,7 @@ import TabNavigator from './TabNavigator';
 import ChatScreen from '../screens/ChatScreen'
 import DetailCourseScreen from '../screens/DetailCourseScreen'
 import SettingsScreen from '../screens/SettingsScreen';
+import CallScreen from '../screens/CallScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -23,16 +24,17 @@ export default function AppStack() {
       <Stack.Screen name="Login" component={Login} />
       <Stack.Screen name="Register" component={Register} />
       <Stack.Screen name="MainTabs" component={TabNavigator} />
-      <Stack.Screen 
-        name="ChatScreen" 
+      <Stack.Screen
+        name="ChatScreen"
         component={ChatScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',
         }}
       />
-     <Stack.Screen name="DetailCourseScreen" component={DetailCourseScreen} />
+      <Stack.Screen name="CallScreen" component={CallScreen} />
+      <Stack.Screen name="DetailCourseScreen" component={DetailCourseScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
     </Stack.Navigator>
-  ); 
+  );
 }
