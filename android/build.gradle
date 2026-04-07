@@ -21,3 +21,10 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+// Align Kotlin bytecode with Java 17 for all modules (e.g. libraries that still set jvmTarget 1.8).
+subprojects { subproject ->
+    subproject.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions.jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+}
