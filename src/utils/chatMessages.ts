@@ -11,6 +11,7 @@ export interface ChatMessageShape {
   callStatus?: string | null;
   callDuration?: number | null;
   callSummary?: string | null;
+  voiceDurationSec?: number | null;
 }
 
 /**
@@ -50,12 +51,29 @@ const isHttpOrAppMediaUrl = (s: string): boolean => {
   );
 };
 
+const pathLooksLikeAudio = (url: string): boolean => {
+  const u = url?.trim?.() ?? '';
+  if (!u?.length) {
+    return false;
+  }
+  const noQuery = u.split('?')?.[0] ?? u;
+  return /\.(m4a|aac|mp3|webm|wav|ogg|opus|caf)(\b|$)/i.test(noQuery);
+};
+
+/** True when message content is a direct audio file URL (S3, local file, etc.). */
+export const isChatAudioContent = (content: string | undefined | null): boolean =>
+  pathLooksLikeAudio(content?.trim?.() ?? '');
+
 /** URL for <Image source={{ uri }} /> — aligns with web <img src>. */
 export const getChatImageDisplayUrl = (
   content: string | undefined | null,
 ): string | null => {
   const raw = content?.trim?.() ?? '';
   if (!raw) {
+    return null;
+  }
+
+  if (isChatAudioContent(raw)) {
     return null;
   }
 
@@ -83,6 +101,33 @@ export const getChatImageDisplayUrl = (
 
 export const isChatImageContent = (content: string | undefined): boolean =>
   getChatImageDisplayUrl(content) != null;
+
+/** Playable audio URI for voice bubbles (same string as stored message content when applicable). */
+export const getChatAudioDisplayUrl = (
+  content: string | undefined | null,
+): string | null => {
+  const raw = content?.trim?.() ?? '';
+  if (!raw || !isChatAudioContent(raw)) {
+    return null;
+  }
+  const imgMatch = raw.match(IMG_SRC_RE);
+  if (imgMatch?.[1]) {
+    const src = decodeHtmlEntities(imgMatch[1]?.trim?.() ?? '');
+    if (isHttpOrAppMediaUrl(src) && isChatAudioContent(src)) {
+      return src;
+    }
+  }
+  const firstLine = raw.split(/\r?\n/)?.[0]?.trim?.() ?? '';
+  const candidate = stripOuterQuotes(firstLine);
+  if (
+    !raw.includes('<') &&
+    candidate?.length > 0 &&
+    isHttpOrAppMediaUrl(candidate)
+  ) {
+    return candidate;
+  }
+  return null;
+};
 
 export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
   prev: T[],

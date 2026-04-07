@@ -1,6 +1,7 @@
 import AWS from 'aws-sdk';
 import { Buffer } from 'buffer';
 import { useCallback, useState } from 'react';
+import RNFS from 'react-native-fs';
 import {
   NEXT_PUBLIC_AWS_ACCESS_KEY_ID,
   NEXT_PUBLIC_AWS_BUCKET_NAME_FOR_IMAGES,
@@ -8,7 +9,20 @@ import {
   NEXT_PUBLIC_S3_REGION,
 } from '@env';
 
-const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VOICE_BYTES = 25 * 1024 * 1024;
+
+const fileUriToFsPath = (uri: string): string => {
+  let u = uri?.trim?.() ?? '';
+  if (u.startsWith('file://')) {
+    u = u.replace(/^file:\/\//, '');
+  }
+  try {
+    return decodeURIComponent(u);
+  } catch {
+    return u;
+  }
+};
 
 const useS3Upload = () => {
   const [loading, setLoading] = useState(false);
@@ -23,8 +37,13 @@ const useS3Upload = () => {
       fileName?: string | null;
       mimeType?: string | null;
       fileSize?: number | null;
+      /** Larger limit for voice notes (matches web chat attachment cap). */
+      kind?: 'image' | 'voice';
     }) => {
-      const { uri, base64, fileName, mimeType, fileSize } = params;
+      const { uri, base64, fileName, mimeType, fileSize, kind = 'image' } =
+        params;
+      const maxBytes = kind === 'voice' ? MAX_VOICE_BYTES : MAX_IMAGE_BYTES;
+      const sizeLabel = kind === 'voice' ? 'Voice' : 'Image';
       setLoading(true);
       setError(null);
       setProgress(0);
@@ -43,14 +62,17 @@ const useS3Upload = () => {
         !secretAccessKey?.length
       ) {
         const msg =
-          'Image upload is not configured. Add NEXT_PUBLIC_AWS_* S3 variables to .env.';
+          'Upload is not configured. Add NEXT_PUBLIC_AWS_* S3 variables to .env.';
         setError(msg);
         setLoading(false);
         throw new Error(msg);
       }
 
-      if (typeof fileSize === 'number' && fileSize > MAX_BYTES) {
-        const msg = 'Image size should be less than 5MB';
+      if (typeof fileSize === 'number' && fileSize > maxBytes) {
+        const msg =
+          kind === 'voice'
+            ? 'Voice message is too large. Try a shorter recording.'
+            : 'Image size should be less than 5MB';
         setError(msg);
         setLoading(false);
         throw new Error(msg);
@@ -64,16 +86,27 @@ const useS3Upload = () => {
         });
 
         const s3 = new AWS.S3({ signatureVersion: 'v4' });
+        const defaultName = kind === 'voice' ? 'voice.m4a' : 'image.jpg';
         const safeName =
-          fileName?.replace?.(/[^a-zA-Z0-9._-]/g, '_') ?? 'image.jpg';
+          fileName?.replace?.(/[^a-zA-Z0-9._-]/g, '_') ?? defaultName;
         const key = `chat-uploads/${Date.now()}-${safeName}`;
-        const contentType = mimeType?.trim?.() || 'image/jpeg';
+        const contentType =
+          mimeType?.trim?.() ||
+          (kind === 'voice' ? 'audio/mp4' : 'image/jpeg');
 
         let body: Buffer;
         const b64 = base64?.trim?.();
         if (b64?.length) {
-          const raw = b64.replace(/^data:image\/\w+;base64,/, '');
+          const raw = b64.replace(/^data:(image|audio)\/\w+;base64,/, '');
           body = Buffer.from(raw, 'base64');
+        } else if (kind === 'voice') {
+          const pathOnly = fileUriToFsPath(uri);
+          const exists = await RNFS.exists(pathOnly);
+          if (!exists) {
+            throw new Error('Could not read voice recording from device.');
+          }
+          const rawB64 = await RNFS.readFile(pathOnly, 'base64');
+          body = Buffer.from(rawB64, 'base64');
         } else {
           const res = await fetch(uri);
           if (!res?.ok) {
@@ -83,8 +116,12 @@ const useS3Upload = () => {
           body = Buffer.from(ab);
         }
 
-        if (body.length > MAX_BYTES) {
-          throw new Error('Image size should be less than 5MB');
+        if (body.length > maxBytes) {
+          throw new Error(
+            kind === 'voice'
+              ? 'Voice message is too large. Try a shorter recording.'
+              : 'Image size should be less than 5MB',
+          );
         }
 
         const managed = s3.upload({
@@ -110,7 +147,9 @@ const useS3Upload = () => {
         return location;
       } catch (e: unknown) {
         const msg =
-          e instanceof Error ? e.message : 'Image upload failed. Try again.';
+          e instanceof Error
+            ? e.message
+            : `${sizeLabel} upload failed. Try again.`;
         setError(msg);
         throw e instanceof Error ? e : new Error(msg);
       } finally {

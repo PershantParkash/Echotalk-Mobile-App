@@ -4,14 +4,10 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RootStackParamList } from '../navigation/navigation';
-
-type SplashScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'MainTabs'
->;
+import { getAccessToken } from '../utils/storage';
 
 export default function SplashComponent() {
-  const navigation = useNavigation<SplashScreenNavigationProp>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   useEffect(() => {
     const checkFirstTimeUser = async () => {
@@ -23,10 +19,16 @@ export default function SplashComponent() {
           await AsyncStorage.setItem('hasLaunched', 'true');
           navigation.replace('Onboarding'); // Send to onboarding
         } else {
-          // Returning user
-          navigation.replace('Login'); // Send to login
+          // Returning user: decide based on token presence
+          const token = await getAccessToken();
+
+          if (token?.trim()) {
+            navigation.replace('MainTabs', { screen: 'HomeTab' });
+          } else {
+            navigation.replace('Login');
+          }
         }
-      } catch (error) {
+      } catch {
         // console.error('Error checking first time user', error);
         navigation.replace('Login'); // fallback
       }

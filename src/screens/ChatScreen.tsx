@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import audioRecorderPlayer from '../utils/audioRecorderPlayer';
 import {
   View,
   Text,
@@ -20,15 +21,21 @@ import CallSocketSingleton from '../utils/sockets/call-socket';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import ChatMessageBar from '../components/chat/ChatMessageBar';
+import ChatMessageBar, {
+  recordingElapsedSecFromClock,
+  type VoiceRecordingClock,
+} from '../components/chat/ChatMessageBar';
 import CallMessageCard from '../components/chat/CallMessageCard';
+import VoiceMessageBubble from '../components/chat/VoiceMessageBubble';
 import useS3Upload from '../hooks/useS3Upload';
 import { pickChatImageAsset } from '../utils/chatImagePicker';
 import type { Asset } from 'react-native-image-picker';
 import {
+  getChatAudioDisplayUrl,
   getChatImageDisplayUrl,
   mergeIncomingSocketMessage,
 } from '../utils/chatMessages';
+import { voiceRecordingAudioSet } from '../utils/voiceRecordingConfig';
 import { ensureAudioPermission, ensureVideoPermission } from '../utils/permissions';
 
 interface Message {
@@ -44,6 +51,8 @@ interface Message {
   callStatus?: string | null;
   callDuration?: number | null;
   callSummary?: string | null;
+  /** Client-only hint for optimistic voice bubbles */
+  voiceDurationSec?: number | null;
 }
 
 interface ChatUser {
@@ -100,6 +109,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     uri: string | null;
   }>({ visible: false, uri: null });
 
+  type VoiceUiPhase = 'idle' | 'recording' | 'paused' | 'preview';
+  const [voiceUiPhase, setVoiceUiPhase] = useState<VoiceUiPhase>('idle');
+  const [voiceRecordingClock, setVoiceRecordingClock] =
+    useState<VoiceRecordingClock | null>(null);
+  const [voicePreviewDurationSec, setVoicePreviewDurationSec] = useState(0);
+  const [voiceFilePath, setVoiceFilePath] = useState<string | null>(null);
+  const [recordingUsers, setRecordingUsers] = useState<
+    { userId: number; fullName: string }[]
+  >([]);
+  const voicePathRef = useRef<string | null>(null);
+  const voiceElapsedRef = useRef(0);
+  const voiceUiPhaseRef = useRef<VoiceUiPhase>('idle');
+
   const { uploadImageFromUri, loading: imageUploading } = useS3Upload();
 
   const scrollViewRef = useRef<ScrollView>(null);
@@ -108,6 +130,53 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const initializedChatIdRef = useRef<number | null>(null);
 
   const { getMessages, sendMessage } = useChatsService();
+
+  const emitRecordingStatus = useCallback(
+    (isRecording: boolean) => {
+      const socket = socketRef.current;
+      const uid =
+        typeof currentUserId === 'number'
+          ? currentUserId
+          : userDetails?.id;
+      if (!socket?.emit || typeof uid !== 'number') {
+        return;
+      }
+      socket.emit('recording', {
+        chatId,
+        userId: uid,
+        fullName: userDetails?.fullName ?? 'Someone',
+        isRecording,
+      });
+    },
+    [chatId, currentUserId, userDetails?.fullName, userDetails?.id],
+  );
+
+  const resetVoiceSession = useCallback(
+    async (emitStop: boolean) => {
+      try {
+        await audioRecorderPlayer.stopRecorder();
+      } catch {
+        /* not recording */
+      }
+      audioRecorderPlayer.removeRecordBackListener();
+      audioRecorderPlayer.removePlayBackListener();
+      try {
+        await audioRecorderPlayer.stopPlayer();
+      } catch {
+        /* idle */
+      }
+      voicePathRef.current = null;
+      setVoiceFilePath(null);
+      voiceElapsedRef.current = 0;
+      setVoiceRecordingClock(null);
+      setVoicePreviewDurationSec(0);
+      setVoiceUiPhase('idle');
+      if (emitStop) {
+        emitRecordingStatus(false);
+      }
+    },
+    [emitRecordingStatus],
+  );
 
   // Get the other user in the conversation
   const otherUser =
@@ -144,6 +213,34 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           setTimeout(() => scrollToBottom(), 100);
         });
 
+        socket.on('userRecording', (payload: any) => {
+          if (payload?.chatId !== chatId) {
+            return;
+          }
+          const uid = payload?.userId;
+          const myId =
+            typeof currentUserId === 'number'
+              ? currentUserId
+              : userDetails?.id;
+          if (uid === myId) {
+            return;
+          }
+          const isRec = Boolean(payload?.isRecording);
+          const name =
+            typeof payload?.fullName === 'string'
+              ? payload.fullName
+              : 'Someone';
+          setRecordingUsers(prev => {
+            if (isRec) {
+              if (prev.some(u => u.userId === uid)) {
+                return prev;
+              }
+              return [...prev, { userId: uid, fullName: name }];
+            }
+            return prev.filter(u => u.userId !== uid);
+          });
+        });
+
         socket.on('disconnect', () => {
           // console.log('❌ Socket disconnected');
         });
@@ -167,13 +264,252 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       // console.log('🔌 Cleaning up socket connection');
       if (socketRef.current) {
         socketRef.current.off('newMessage');
+        socketRef.current.off('userRecording');
         socketRef.current.off('connect');
         socketRef.current.off('disconnect');
         socketRef.current.off('error');
       }
       ChatSocketSingleton.disconnect();
     };
-  }, [chatId, currentUserId]);
+  }, [chatId, currentUserId, userDetails?.id]);
+
+  /** Only run voice cleanup when `chatId` changes — not when `userDetails` updates (that was stopping the recorder mid-session). */
+  const resetVoiceRef = useRef(resetVoiceSession);
+  resetVoiceRef.current = resetVoiceSession;
+  useEffect(() => {
+    return () => {
+      resetVoiceRef.current(true).catch(() => {});
+    };
+  }, [chatId]);
+
+  useEffect(() => {
+    setRecordingUsers([]);
+  }, [chatId]);
+
+  useEffect(() => {
+    voiceUiPhaseRef.current = voiceUiPhase;
+  }, [voiceUiPhase]);
+
+  const handleMicPress = useCallback(async () => {
+    if (voiceUiPhase !== 'idle') {
+      return;
+    }
+    if (pendingImageAsset?.uri != null) {
+      Alert.alert(
+        'Voice message',
+        'Send or remove the image before recording audio.',
+      );
+      return;
+    }
+    if (sending || imageUploading) {
+      return;
+    }
+    const ok = await ensureAudioPermission();
+    if (!ok) {
+      Alert.alert(
+        'Permission needed',
+        'Microphone access is required to record voice messages.',
+      );
+      return;
+    }
+    try {
+      await audioRecorderPlayer.stopPlayer().catch(() => {});
+      await audioRecorderPlayer.setSubscriptionDuration(0.08);
+      audioRecorderPlayer.removeRecordBackListener();
+      audioRecorderPlayer.addRecordBackListener(e => {
+        const ms = e?.currentPosition ?? 0;
+        const sec = Math.max(0, Math.floor(ms / 1000));
+        if (sec > voiceElapsedRef.current) {
+          voiceElapsedRef.current = sec;
+        }
+      });
+      const path = await audioRecorderPlayer.startRecorder(
+        undefined,
+        voiceRecordingAudioSet,
+        true,
+      );
+      const p = path?.trim?.() ?? '';
+      voicePathRef.current = p?.length ? p : voicePathRef.current;
+      if (p?.length) {
+        setVoiceFilePath(p);
+      }
+      voiceElapsedRef.current = 0;
+      setVoiceRecordingClock({
+        startEpochMs: Date.now(),
+        pausedTotalMs: 0,
+        pauseEpochMs: null,
+      });
+      setVoiceUiPhase('recording');
+      emitRecordingStatus(true);
+    } catch {
+      audioRecorderPlayer.removeRecordBackListener();
+      setVoiceUiPhase('idle');
+      setVoiceRecordingClock(null);
+      emitRecordingStatus(false);
+      Alert.alert(
+        'Microphone',
+        'Could not start recording. Check microphone permissions in Settings.',
+      );
+    }
+  }, [
+    voiceUiPhase,
+    pendingImageAsset?.uri,
+    sending,
+    imageUploading,
+    emitRecordingStatus,
+  ]);
+
+  const handleVoicePause = useCallback(() => {
+    setVoiceRecordingClock(prev =>
+      prev ? { ...prev, pauseEpochMs: Date.now() } : prev,
+    );
+    setVoiceUiPhase('paused');
+    emitRecordingStatus(false);
+    void audioRecorderPlayer.pauseRecorder().catch(() => {
+      Alert.alert('Recording', 'Could not pause recording.');
+      setVoiceRecordingClock(prev =>
+        prev?.pauseEpochMs != null
+          ? { ...prev, pauseEpochMs: null }
+          : prev,
+      );
+      setVoiceUiPhase('recording');
+      emitRecordingStatus(true);
+    });
+  }, [emitRecordingStatus]);
+
+  const handleVoiceResume = useCallback(() => {
+    setVoiceRecordingClock(prev => {
+      const pauseAt = prev?.pauseEpochMs;
+      if (prev == null || pauseAt == null) {
+        return prev;
+      }
+      return {
+        startEpochMs: prev.startEpochMs,
+        pausedTotalMs: prev.pausedTotalMs + Math.max(0, Date.now() - pauseAt),
+        pauseEpochMs: null,
+      };
+    });
+    setVoiceUiPhase('recording');
+    emitRecordingStatus(true);
+    void audioRecorderPlayer.resumeRecorder().catch(() => {
+      Alert.alert('Recording', 'Could not resume recording.');
+    });
+  }, [emitRecordingStatus]);
+
+  const handleVoiceStopToPreview = useCallback(() => {
+    const wallClockSec = Math.floor(
+      recordingElapsedSecFromClock(voiceRecordingClock),
+    );
+    const durFromRefs = Math.max(1, voiceElapsedRef.current ?? 1, wallClockSec);
+
+    audioRecorderPlayer.removeRecordBackListener();
+    setVoiceRecordingClock(null);
+    setVoicePreviewDurationSec(durFromRefs);
+    setVoiceUiPhase('preview');
+    emitRecordingStatus(false);
+
+    void (async () => {
+      try {
+        const path = await audioRecorderPlayer.stopRecorder();
+        const finalPath =
+          path?.trim?.() ||
+          voicePathRef.current?.trim?.() ||
+          voiceFilePath?.trim?.() ||
+          '';
+        if (finalPath?.length) {
+          voicePathRef.current = finalPath;
+          setVoiceFilePath(finalPath);
+        }
+        const nativeDur = Math.max(1, voiceElapsedRef.current ?? 1);
+        setVoicePreviewDurationSec(prev =>
+          Math.max(prev ?? 1, nativeDur, wallClockSec),
+        );
+      } catch {
+        Alert.alert('Recording', 'Could not finish recording.');
+        await resetVoiceSession(false);
+      }
+    })();
+  }, [
+    emitRecordingStatus,
+    voiceFilePath,
+    voiceRecordingClock,
+    resetVoiceSession,
+  ]);
+
+  const handleDiscardVoicePreview = useCallback(async () => {
+    await audioRecorderPlayer.stopPlayer().catch(() => {});
+    audioRecorderPlayer.removeRecordBackListener();
+    voicePathRef.current = null;
+    setVoiceFilePath(null);
+    setVoicePreviewDurationSec(0);
+    setVoiceUiPhase('idle');
+  }, []);
+
+  const handleSendVoiceMessage = useCallback(async () => {
+    const path =
+      voicePathRef.current?.trim?.() ?? voiceFilePath?.trim?.() ?? '';
+    if (!path?.length) {
+      setVoiceUiPhase('idle');
+      return;
+    }
+    const dur = Math.max(1, voicePreviewDurationSec || voiceElapsedRef.current || 1);
+    const tempId = -Math.abs(Date.now());
+    const optimisticMessage: Message = {
+      id: tempId,
+      content: path,
+      createdAt: new Date().toISOString(),
+      voiceDurationSec: dur,
+      sender: {
+        id: typeof currentUserId === 'number' ? currentUserId : 0,
+        fullName: userDetails?.fullName ?? 'You',
+        profileImage: userDetails?.profileImage ?? null,
+      },
+    };
+
+    try {
+      setSending(true);
+      setVoiceUiPhase('idle');
+      setVoiceFilePath(null);
+      voicePathRef.current = null;
+      setVoicePreviewDurationSec(0);
+      setMessages(prev => [...prev, optimisticMessage]);
+      setTimeout(() => scrollToBottom(), 100);
+
+      const audioUrl = await uploadImageFromUri({
+        uri: path,
+        fileName: `voice-${Date.now()}.m4a`,
+        mimeType: 'audio/mp4',
+        kind: 'voice',
+      });
+
+      const response = await sendMessage(chatId, audioUrl);
+
+      setMessages(prev => {
+        const filtered = prev.filter(msg => msg.id !== tempId);
+        const responseExists = filtered.some(msg => msg.id === response?.id);
+        if (!responseExists && response) {
+          return [...filtered, response];
+        }
+        return filtered;
+      });
+    } catch (e: unknown) {
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      const msg =
+        e instanceof Error ? e.message : 'Could not send voice message.';
+      Alert.alert('Voice message', msg);
+    } finally {
+      setSending(false);
+    }
+  }, [
+    voiceFilePath,
+    voicePreviewDurationSec,
+    currentUserId,
+    userDetails?.fullName,
+    userDetails?.profileImage,
+    uploadImageFromUri,
+    sendMessage,
+    chatId,
+  ]);
 
   const fetchMessages = useCallback(
     async (pageNum = 1) => {
@@ -316,6 +652,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   /** Pick image and stage it for preview (no upload yet). */
   const handlePickImageForPreview = async () => {
     if (sending || imageUploading) {
+      return;
+    }
+    if (voiceUiPhase !== 'idle') {
+      Alert.alert(
+        'Image',
+        'Finish or cancel the voice recording before attaching an image.',
+      );
       return;
     }
 
@@ -544,6 +887,52 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               message={message}
               formatMessageTime={formatTime}
             />
+          )}
+        </View>
+      );
+    }
+
+    const audioUri = getChatAudioDisplayUrl(message?.content);
+    if (audioUri) {
+      return (
+        <View
+          key={message.id}
+          className={`mb-4 ${isMyMessage ? 'items-end' : 'items-start'}`}
+        >
+          {!isMyMessage && (
+            <View className="flex-row items-start mb-2">
+              <Image
+                source={{ uri: getProfileImage(message.sender) }}
+                className="w-10 h-10 rounded-full mr-2"
+              />
+              <View className="flex-1 min-w-0 max-w-[92%]">
+                <Text className="text-sm font-semibold mb-1 text-gray-900">
+                  {message.sender.fullName || 'Unknown'}
+                </Text>
+                <VoiceMessageBubble
+                  audioUri={audioUri}
+                  isMyMessage={false}
+                  messageId={message.id}
+                  initialDurationSec={message.voiceDurationSec ?? null}
+                />
+                <Text className="text-xs text-gray-400 mt-1">
+                  {formatTime(message.createdAt)}
+                </Text>
+              </View>
+            </View>
+          )}
+          {isMyMessage && (
+            <View className="items-end">
+              <VoiceMessageBubble
+                audioUri={audioUri}
+                isMyMessage
+                messageId={message.id}
+                initialDurationSec={message.voiceDurationSec ?? null}
+              />
+              <Text className="text-xs text-gray-400 mt-1">
+                {formatTime(message.createdAt)}
+              </Text>
+            </View>
           )}
         </View>
       );
@@ -789,12 +1178,29 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           </View>
         </View>
 
+        {(recordingUsers?.length ?? 0) > 0 && (
+          <View className="bg-violet-50 px-4 py-2 border-b border-violet-100">
+            <Text className="text-sm text-violet-900">
+              {recordingUsers.map(u => u?.fullName ?? 'Someone').join(', ')}
+              {(recordingUsers?.length ?? 0) === 1
+                ? ' is recording…'
+                : ' are recording…'}
+            </Text>
+          </View>
+        )}
+
         {/* Messages */}
         <ScrollView
           ref={scrollViewRef}
           className="flex-1 px-4 py-4"
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollToBottom()}
+          onContentSizeChange={() => {
+            const phase = voiceUiPhaseRef.current;
+            if (phase === 'recording' || phase === 'paused') {
+              return;
+            }
+            scrollToBottom();
+          }}
           keyboardShouldPersistTaps="handled"
         >
           {loading && page === 1 ? (
@@ -874,6 +1280,24 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           onImagePress={handlePickImageForPreview}
           pendingImageUri={pendingImageAsset?.uri ?? null}
           onCancelImage={handleCancelPendingImage}
+          onMicPress={handleMicPress}
+          micDisabled={sending || imageUploading}
+          voiceMode={
+            voiceUiPhase === 'preview'
+              ? 'preview'
+              : voiceUiPhase === 'paused'
+                ? 'paused'
+                : voiceUiPhase === 'recording'
+                  ? 'recording'
+                  : 'none'
+          }
+          voiceRecordingClock={voiceRecordingClock}
+          voicePreviewDurationSec={voicePreviewDurationSec}
+          onVoicePause={handleVoicePause}
+          onVoiceResume={handleVoiceResume}
+          onVoiceStop={handleVoiceStopToPreview}
+          onVoiceDiscardPreview={handleDiscardVoicePreview}
+          onVoiceSendPreview={handleSendVoiceMessage}
         />
         {/* <SocketDebugOverlay chatId={chatId} /> */}
       </KeyboardAvoidingView>

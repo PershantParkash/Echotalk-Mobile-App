@@ -23,7 +23,7 @@ export const saveTokens = async (
         accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
       }
     );
-  } catch (error) {
+  } catch {
     // console.error('Error saving tokens:', error);
   }
 };
@@ -41,7 +41,7 @@ export const getAccessToken = async (): Promise<string | null> => {
 
     const tokens: Tokens = JSON.parse(credentials.password);
     return tokens.accessToken;
-  } catch (error) {
+  } catch {
     // console.error('Error getting access token:', error);
     return null;
   }
@@ -60,7 +60,7 @@ export const getRefreshToken = async (): Promise<string | null> => {
 
     const tokens: Tokens = JSON.parse(credentials.password);
     return tokens.refreshToken;
-  } catch (error) {
+  } catch {
     // console.error('Error getting refresh token:', error);
     return null;
   }
@@ -72,7 +72,7 @@ export const getRefreshToken = async (): Promise<string | null> => {
 export const clearAllTokens = async (): Promise<void> => {
   try {
     await Keychain.resetGenericPassword({ service: SERVICE_NAME });
-  } catch (error) {
+  } catch {
     // console.error('Error clearing tokens:', error);
   }
 };
