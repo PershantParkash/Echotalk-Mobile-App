@@ -22,9 +22,9 @@ import { PhoneInputWithCountry } from '../ui/PhoneInputWithCountry';
 type LoginScreenProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export default function LoginComponent() {
-  const [countryCode, setCountryCode] = useState('92');
-  const [phoneNumber, setPhoneNumber] = useState('3234836348');
-  const [password, setPassword] = useState('faraz123');
+  const [countryCode, setCountryCode] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{
     phoneNumber?: string;
@@ -60,6 +60,7 @@ export default function LoginComponent() {
         phoneNumber: `+${countryCode}${phoneNumber}`,
         password,
       });
+      console.log('response', response)
       if (response) {
         await saveTokens(response.accessToken, response.refreshToken);
 

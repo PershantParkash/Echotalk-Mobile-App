@@ -59,5 +59,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access is required for voice messages, voice calls, and video calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera access is required for video calls.</string>
 </dict>
 </plist>

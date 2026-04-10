@@ -95,11 +95,16 @@ android {
             keyPassword 'android'
         }
         release {
-            if (project.hasProperty('MYAPP_RELEASE_STORE_FILE')) {
-                storeFile file(MYAPP_RELEASE_STORE_FILE)
-                storePassword MYAPP_RELEASE_STORE_PASSWORD
-                keyAlias MYAPP_RELEASE_KEY_ALIAS
-                keyPassword MYAPP_RELEASE_KEY_PASSWORD
+            def releaseStoreFile = project.findProperty('MYAPP_RELEASE_STORE_FILE')
+            def releaseStorePassword = project.findProperty('MYAPP_RELEASE_STORE_PASSWORD')
+            def releaseKeyAlias = project.findProperty('MYAPP_RELEASE_KEY_ALIAS')
+            def releaseKeyPassword = project.findProperty('MYAPP_RELEASE_KEY_PASSWORD')
+
+            if (releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
             }
         }
     }
@@ -108,7 +113,15 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            def releaseStoreFile = project.findProperty('MYAPP_RELEASE_STORE_FILE')
+            def releaseKeystoreExists = releaseStoreFile ? file(releaseStoreFile).exists() : false
+            def releaseSigningReady =
+                    releaseKeystoreExists &&
+                            project.findProperty('MYAPP_RELEASE_STORE_PASSWORD') &&
+                            project.findProperty('MYAPP_RELEASE_KEY_ALIAS') &&
+                            project.findProperty('MYAPP_RELEASE_KEY_PASSWORD')
+
+            signingConfig releaseSigningReady ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
