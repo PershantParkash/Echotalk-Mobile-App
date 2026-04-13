@@ -51,6 +51,7 @@ export interface ChatMessageBarProps {
   onVoiceStop?: () => void;
   onVoiceDiscardPreview?: () => void;
   onVoiceSendPreview?: () => void;
+  scrollToBottom?: () => void;
 }
 
 const WAVE_BARS = 12;
@@ -171,6 +172,7 @@ const ChatMessageBarInner: React.FC<ChatMessageBarProps> = ({
   onVoiceStop,
   onVoiceDiscardPreview,
   onVoiceSendPreview,
+  scrollToBottom,
 }) => {
   const hasText = (value?.trim?.() ?? '').length > 0;
   const hasPendingImage = (pendingImageUri?.trim?.() ?? '').length > 0;
@@ -196,7 +198,7 @@ const ChatMessageBarInner: React.FC<ChatMessageBarProps> = ({
     (recordingTick - recordingTick);
 
   return (
-    <View className="px-4 pb-4 pt-2 bg-white border-t border-gray-100">
+    <View className="px-4 pb-[1px] pt-2 bg-white border-t border-gray-100">
       {hasPendingImage && !inVoice && (
         <View className="mb-3 self-start">
           <View className="relative">
@@ -326,12 +328,13 @@ const ChatMessageBarInner: React.FC<ChatMessageBarProps> = ({
               placeholder={placeholder}
               placeholderTextColor="#9ca3af"
               className="flex-1 text-base py-2"
-              multiline
+              // multiline
               maxLength={maxLength}
               onSubmitEditing={onSend}
-              editable={!sending}
+              editable
               returnKeyType="send"
               blurOnSubmit={false}
+              onFocus={() => setTimeout(() => scrollToBottom?.(), 100)}
             />
 
             {canSend ? (
