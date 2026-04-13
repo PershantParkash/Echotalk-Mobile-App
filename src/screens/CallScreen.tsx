@@ -8,18 +8,17 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import type {
-  NativeStackNavigationProp,
-  RouteProp,
-} from '@react-navigation/native-stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   PhoneOff,
+  Hand,
   Mic,
   MicOff,
   Video,
   VideoOff,
-  Captions,
+  Volume2,
 } from 'lucide-react-native';
 import { RootStackParamList } from '../navigation/navigation';
 import CallSocketSingleton from '../utils/sockets/call-socket';
@@ -45,7 +44,8 @@ const CallScreen = () => {
 
   const [muted, setMuted] = useState(false);
   const [videoOn, setVideoOn] = useState(false);
-  const [subtitlesOn, setSubtitlesOn] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(false);
+  const [handRaised, setHandRaised] = useState(false);
   const [callStatus, setCallStatus] = useState<'calling' | 'receiving' | 'active' | 'ended'>('calling');
   const [calleeName, setCalleeName] = useState<string>('');
   const [roomName, setRoomName] = useState<string>('');
@@ -421,8 +421,8 @@ const CallScreen = () => {
       fromId === selfId
         ? toId
         : toId === selfId
-        ? fromId
-        : undefined;
+          ? fromId
+          : undefined;
 
     if (!otherUserId) {
       return;
@@ -457,14 +457,24 @@ const CallScreen = () => {
     }
   };
 
+  const toggleSpeaker = () => {
+    // UI-only for now; wire to audio route when available.
+    setSpeakerOn((s) => !s);
+  };
+
+  const toggleHand = () => {
+    // UI-only for now; wire to signaling when available.
+    setHandRaised((h) => !h);
+  };
+
   const title =
     callStatus === 'receiving'
       ? 'Incoming call'
       : callStatus === 'active'
-      ? callType === 'video'
-        ? 'In video call'
-        : 'In call'
-      : 'Calling...';
+        ? callType === 'video'
+          ? 'In video call'
+          : 'In call'
+        : 'Calling...';
 
   const showVideoLayout =
     callStatus === 'active' && callType === 'video' && mediaReady;
@@ -532,55 +542,69 @@ const CallScreen = () => {
         </View>
       )}
 
-      <SafeAreaView edges={['bottom']} className="border-t border-neutral-800 bg-neutral-900 px-4">
-        <View className="flex flex-row items-center justify-between gap-2 py-6">
+      <SafeAreaView edges={['bottom']} className="bg-transparent">
+        <View
+          style={styles.floatingBar}
+          className="flex flex-row items-center justify-between"
+        >
+          {/* Sign Language */}
           <TouchableOpacity
-            accessibilityLabel="End call"
+            accessibilityLabel={handRaised ? 'Lower hand' : 'Raise hand'}
             activeOpacity={0.85}
-            className="h-[68px] w-[68px] items-center justify-center rounded-full bg-red-600"
-            onPress={handleEndPress}
-          >
-            <PhoneOff color="#ffffff" size={30} strokeWidth={2} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            accessibilityLabel={muted ? 'Unmute' : 'Mute'}
-            activeOpacity={0.85}
-            className={`h-[68px] w-[68px] items-center justify-center rounded-full ${muted ? 'bg-red-500/90' : 'bg-neutral-600'
+            className={`h-[54px] w-[54px] items-center justify-center rounded-full ${handRaised ? 'bg-green-500' : 'bg-neutral-700'
               }`}
-            onPress={toggleMute}
+            onPress={toggleHand}
           >
-            {muted ? (
-              <MicOff color="#ffffff" size={30} strokeWidth={2} />
-            ) : (
-              <Mic color="#ffffff" size={30} strokeWidth={2} />
-            )}
+            <Hand color="#ffffff" size={24} strokeWidth={2.2} />
           </TouchableOpacity>
 
+          {/* Video Button */}
           <TouchableOpacity
             accessibilityLabel={videoOn ? 'Turn off video' : 'Turn on video'}
             activeOpacity={0.85}
-            className={`h-[68px] w-[68px] items-center justify-center rounded-full ${videoOn ? 'bg-neutral-600' : 'bg-neutral-500'
-              }`}
+            className="h-[54px] w-[54px] items-center justify-center rounded-full bg-neutral-700"
             onPress={toggleVideo}
           >
             {videoOn ? (
-              <Video color="#ffffff" size={30} strokeWidth={2} />
+              <Video color="#ffffff" size={24} strokeWidth={2.2} />
             ) : (
-              <VideoOff color="#ffffff" size={30} strokeWidth={2} />
+              <VideoOff color="#ffffff" size={24} strokeWidth={2.2} />
             )}
           </TouchableOpacity>
 
+          {/* Loud Speaker Button */}
           <TouchableOpacity
-            accessibilityLabel={
-              subtitlesOn ? 'Turn off subtitles' : 'Turn on subtitles'
-            }
+            accessibilityLabel={speakerOn ? 'Speaker off' : 'Speaker on'}
             activeOpacity={0.85}
-            className={`h-[68px] w-[68px] items-center justify-center rounded-full ${subtitlesOn ? 'bg-emerald-600' : 'bg-neutral-600'
+            className={`h-[54px] w-[54px] items-center justify-center rounded-full ${speakerOn ? 'bg-white' : 'bg-neutral-700'
               }`}
-            onPress={() => setSubtitlesOn((s) => !s)}
+            onPress={toggleSpeaker}
           >
-            <Captions color="#ffffff" size={30} strokeWidth={2} />
+            <Volume2 color="#ffffff" size={24} strokeWidth={2.2} />
+          </TouchableOpacity>
+
+          {/* Mute Button */}
+          <TouchableOpacity
+            accessibilityLabel={muted ? 'Unmute' : 'Mute'}
+            activeOpacity={0.85}
+            className="h-[54px] w-[54px] items-center justify-center rounded-full bg-neutral-700"
+            onPress={toggleMute}
+          >
+            {muted ? (
+              <MicOff color="#ffffff" size={24} strokeWidth={2.2} />
+            ) : (
+              <Mic color="#ffffff" size={24} strokeWidth={2.2} />
+            )}
+          </TouchableOpacity>
+
+          {/* End Call Button */}
+          <TouchableOpacity
+            accessibilityLabel="End call"
+            activeOpacity={0.85}
+            className="h-[54px] w-[54px] items-center justify-center rounded-full bg-red-600"
+            onPress={handleEndPress}
+          >
+            <PhoneOff color="#ffffff" size={24} strokeWidth={2.2} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -611,6 +635,24 @@ const styles = StyleSheet.create({
   localVideo: {
     flex: 1,
     width: '100%',
+  },
+  floatingBar: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(23,23,23,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    ...(Platform.OS === 'android'
+      ? { elevation: 10 }
+      : {
+        shadowColor: '#000',
+        shadowOpacity: 0.35,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+      }),
   },
 });
 

@@ -1269,7 +1269,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         {/* Messages */}
         <ScrollView
           ref={scrollViewRef}
-          className="flex-1 px-4 py-4"
+          className="flex-1 px-4 py-4 mb-1"
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => {
             const phase = voiceUiPhaseRef.current;
