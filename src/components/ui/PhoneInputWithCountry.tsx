@@ -65,12 +65,14 @@ export function PhoneInputWithCountry({
 
   const filteredCountries = useMemo(() => {
     if (!searchQuery.trim()) return COUNTRIES;
-    const q = searchQuery.toLowerCase().trim();
+    const qRaw = searchQuery.toLowerCase().trim();
+    const qDigits = normalizeDialCode(searchQuery);
+    const qAlpha = qRaw.replace(/[^a-z]/g, '');
     return COUNTRIES.filter(
       c =>
-        c.name.toLowerCase().includes(q) ||
-        c.phonecode.includes(q) ||
-        c.isoCode.toLowerCase().includes(q),
+        c.name?.toLowerCase().includes(qRaw) ||
+        (!!qDigits && normalizeDialCode(c.phonecode).includes(qDigits)) ||
+        (!!qAlpha && c.isoCode?.toLowerCase().includes(qAlpha)),
     );
   }, [searchQuery]);
 

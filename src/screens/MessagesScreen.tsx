@@ -11,6 +11,9 @@ import {
   Animated,
   Dimensions,
   StyleSheet,
+  RefreshControl,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import useChatsService from "../services/chat";
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -101,6 +104,10 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   const [onlineContacts, setOnlineContacts] = useState<ChatUser[]>([]);
   const [isInitiatingChat, setIsInitiatingChat] = useState(false);
   const latestInitiationTokenRef = useRef(0);
+  const [refreshingConversations, setRefreshingConversations] = useState(false);
+  const [initialChatsLoadDone, setInitialChatsLoadDone] = useState(false);
+  const wasPullingPastBottomRef = useRef(false);
+  const lastBottomRefreshAtRef = useRef(0);
 
   const [contactsDeniedOnce, setContactsDeniedOnce] = useState(false);
   const [phoneContacts, setPhoneContacts] = useState<PhoneContactItem[]>([]);
@@ -151,10 +158,10 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   const fetchChats = async () => {
     try {
       const chats = await getChats();
-      setConversations(chats);
+      setConversations(chats ?? []);
 
       // Extract online contacts from all chats (excluding current user)
-      const allUsers = chats.flatMap((chat: Chat) => chat.users);
+      const allUsers = (chats ?? [])?.flatMap?.((chat: Chat) => chat?.users ?? []) ?? [];
       const uniqueOnlineUsers = allUsers
         .filter((user: ChatUser) => {
           if (typeof currentUserId === 'number') {
@@ -170,7 +177,48 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
       setOnlineContacts(uniqueOnlineUsers);
     } catch {
       // console.error('Error fetching chats:', error);
+    } finally {
+      setInitialChatsLoadDone(true);
     }
+  };
+
+  const onPullDownRefresh = async () => {
+    setRefreshingConversations(true);
+    try {
+      await fetchChats?.();
+    } finally {
+      setRefreshingConversations(false);
+    }
+  };
+
+  const handleScrollBottomReload = (
+    event: NativeSyntheticEvent<NativeScrollEvent>,
+  ) => {
+    const { contentOffset, contentSize, layoutMeasurement } =
+      event?.nativeEvent ?? {};
+    const layoutH = layoutMeasurement?.height ?? 0;
+    const offsetY = contentOffset?.y ?? 0;
+    const contentH = contentSize?.height ?? 0;
+    if (layoutH <= 0 || contentH <= 0) return;
+
+    const maxY = Math.max(0, contentH - layoutH);
+    const pullPastBottom = offsetY - maxY;
+    const overscrollThreshold = 56;
+    const pullingPastBottom = pullPastBottom > overscrollThreshold;
+
+    if (
+      pullingPastBottom &&
+      !wasPullingPastBottomRef.current &&
+      !refreshingConversations &&
+      !chatsLoading
+    ) {
+      const now = Date.now?.() ?? 0;
+      if (now - (lastBottomRefreshAtRef.current ?? 0) > 1500) {
+        lastBottomRefreshAtRef.current = now;
+        void onPullDownRefresh?.();
+      }
+    }
+    wasPullingPastBottomRef.current = pullingPastBottom;
   };
 
   // Helper function to get the other user in a conversation
@@ -539,7 +587,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     }
   };
 
-  if (chatsLoading) {
+  if (chatsLoading && !initialChatsLoadDone) {
     return (
       <View className="flex-1 bg-white items-center justify-center">
         <ActivityIndicator size="large" color="#000" />
@@ -580,6 +628,18 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
         className="flex-1"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollViewContentContainer}
+        scrollEventThrottle={16}
+        onScroll={handleScrollBottomReload}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshingConversations}
+            onRefresh={() => void onPullDownRefresh?.()}
+            tintColor="#5B2EC4"
+            colors={['#5B2EC4']}
+          />
+        }
+        bounces
+        overScrollMode="always"
       >
         {/* Online Contacts Section */}
         {onlineContacts?.length > 0 && (

@@ -7,6 +7,7 @@ import {
   Image,
   Modal,
   TouchableOpacity,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -20,7 +21,7 @@ import CallSocketSingleton from '../utils/sockets/call-socket';
 // import SocketDebugOverlay from '../components/SocketDebugOverlay';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatMessageBar, {
   recordingElapsedSecFromClock,
   type VoiceRecordingClock,
@@ -86,6 +87,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   route,
   navigation,
 }) => {
+  const insets = useSafeAreaInsets();
   const {
     chatId,
     chat,
@@ -108,6 +110,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     visible: boolean;
     uri: string | null;
   }>({ visible: false, uri: null });
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
+  const [applyAndroidKeyboardOffset, setApplyAndroidKeyboardOffset] =
+    useState(false);
+  const rootLayoutHeightRef = useRef<number | null>(null);
+  const lastPreKeyboardRootHeightRef = useRef<number | null>(null);
+  const keyboardVisibleRef = useRef(false);
 
   type VoiceUiPhase = 'idle' | 'recording' | 'paused' | 'preview';
   const [voiceUiPhase, setVoiceUiPhase] = useState<VoiceUiPhase>('idle');
@@ -278,7 +287,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   resetVoiceRef.current = resetVoiceSession;
   useEffect(() => {
     return () => {
-      resetVoiceRef.current(true).catch(() => {});
+      resetVoiceRef.current(true).catch(() => { });
     };
   }, [chatId]);
 
@@ -289,6 +298,56 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   useEffect(() => {
     voiceUiPhaseRef.current = voiceUiPhase;
   }, [voiceUiPhase]);
+
+  /**
+   * Android keyboard handling across OS versions:
+   * - Many devices honor `windowSoftInputMode="adjustResize"` → root height shrinks; no extra offset needed.
+   * - Some newer/edge-to-edge setups don't resize reliably → message bar can end up behind keyboard.
+   *
+   * We detect whether the root layout height actually shrinks when the keyboard shows.
+   * If it doesn't, we apply an extra bottom padding equal to the keyboard height.
+   */
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const showSub = Keyboard.addListener('keyboardDidShow', e => {
+      keyboardVisibleRef.current = true;
+      lastPreKeyboardRootHeightRef.current = rootLayoutHeightRef.current;
+      const h = e?.endCoordinates?.height ?? 0;
+      setAndroidKeyboardHeight(Number.isFinite(h) && h > 0 ? h : 0);
+
+      // If `adjustResize` works, an onLayout will fire and update rootLayoutHeightRef.
+      // Give the layout a moment, then decide if we need a manual offset.
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const before = lastPreKeyboardRootHeightRef.current;
+          const after = rootLayoutHeightRef.current;
+          if (typeof before !== 'number' || typeof after !== 'number') {
+            setApplyAndroidKeyboardOffset(true);
+            return;
+          }
+
+          const shrink = Math.max(0, before - after);
+          // If the view didn't meaningfully shrink, keyboard likely overlays the UI.
+          setApplyAndroidKeyboardOffset(shrink < 24);
+        }, 60);
+      });
+    });
+
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      keyboardVisibleRef.current = false;
+      setAndroidKeyboardHeight(0);
+      setApplyAndroidKeyboardOffset(false);
+      lastPreKeyboardRootHeightRef.current = null;
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleMicPress = useCallback(async () => {
     if (voiceUiPhase !== 'idle') {
@@ -313,7 +372,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       return;
     }
     try {
-      await audioRecorderPlayer.stopPlayer().catch(() => {});
+      await audioRecorderPlayer.stopPlayer().catch(() => { });
       await audioRecorderPlayer.setSubscriptionDuration(0.08);
       audioRecorderPlayer.removeRecordBackListener();
       audioRecorderPlayer.addRecordBackListener(e => {
@@ -365,7 +424,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     );
     setVoiceUiPhase('paused');
     emitRecordingStatus(false);
-    void audioRecorderPlayer.pauseRecorder().catch(() => {
+    audioRecorderPlayer.pauseRecorder().catch(() => {
       Alert.alert('Recording', 'Could not pause recording.');
       setVoiceRecordingClock(prev =>
         prev?.pauseEpochMs != null
@@ -391,7 +450,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     });
     setVoiceUiPhase('recording');
     emitRecordingStatus(true);
-    void audioRecorderPlayer.resumeRecorder().catch(() => {
+    audioRecorderPlayer.resumeRecorder().catch(() => {
       Alert.alert('Recording', 'Could not resume recording.');
     });
   }, [emitRecordingStatus]);
@@ -408,7 +467,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     setVoiceUiPhase('preview');
     emitRecordingStatus(false);
 
-    void (async () => {
+    (async () => {
       try {
         const path = await audioRecorderPlayer.stopRecorder();
         const finalPath =
@@ -437,7 +496,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   ]);
 
   const handleDiscardVoicePreview = useCallback(async () => {
-    await audioRecorderPlayer.stopPlayer().catch(() => {});
+    await audioRecorderPlayer.stopPlayer().catch(() => { });
     audioRecorderPlayer.removeRecordBackListener();
     voicePathRef.current = null;
     setVoiceFilePath(null);
@@ -1123,11 +1182,29 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     <SafeAreaView className="flex-1 bg-white">
       <KeyboardAvoidingView
         className="flex-1 bg-white"
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={
+          Platform.OS === 'ios'
+            ? Math.max(0, headerHeight + (insets?.top ?? 0))
+            : 0
+        }
+        onLayout={e => {
+          const h = e?.nativeEvent?.layout?.height ?? 0;
+          if (Number.isFinite(h) && h > 0) {
+            rootLayoutHeightRef.current = h;
+          }
+        }}
       >
         {/* Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
+        <View
+          className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-100"
+          onLayout={e => {
+            const h = e?.nativeEvent?.layout?.height ?? 0;
+            if (Number.isFinite(h) && h > 0 && h !== headerHeight) {
+              setHeaderHeight(h);
+            }
+          }}
+        >
           <View className="flex-row items-center flex-1">
             <TouchableOpacity
               activeOpacity={0.7}
@@ -1271,34 +1348,45 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           </View>
         </Modal>
 
-        <ChatMessageBar
-          value={newMessage}
-          onChangeText={setNewMessage}
-          onSend={handleSendFromBar}
-          sending={sending}
-          imageUploading={imageUploading}
-          onImagePress={handlePickImageForPreview}
-          pendingImageUri={pendingImageAsset?.uri ?? null}
-          onCancelImage={handleCancelPendingImage}
-          onMicPress={handleMicPress}
-          micDisabled={sending || imageUploading}
-          voiceMode={
-            voiceUiPhase === 'preview'
-              ? 'preview'
-              : voiceUiPhase === 'paused'
-                ? 'paused'
-                : voiceUiPhase === 'recording'
-                  ? 'recording'
-                  : 'none'
-          }
-          voiceRecordingClock={voiceRecordingClock}
-          voicePreviewDurationSec={voicePreviewDurationSec}
-          onVoicePause={handleVoicePause}
-          onVoiceResume={handleVoiceResume}
-          onVoiceStop={handleVoiceStopToPreview}
-          onVoiceDiscardPreview={handleDiscardVoicePreview}
-          onVoiceSendPreview={handleSendVoiceMessage}
-        />
+        <View
+          style={{
+            paddingBottom:
+              Math.max(0, (insets?.bottom ?? 0) - 16) +
+              (Platform.OS === 'android' && applyAndroidKeyboardOffset
+                ? androidKeyboardHeight
+                : 0),
+          }}
+        >
+          <ChatMessageBar
+            value={newMessage}
+            onChangeText={setNewMessage}
+            onSend={handleSendFromBar}
+            sending={sending}
+            imageUploading={imageUploading}
+            onImagePress={handlePickImageForPreview}
+            pendingImageUri={pendingImageAsset?.uri ?? null}
+            onCancelImage={handleCancelPendingImage}
+            onMicPress={handleMicPress}
+            micDisabled={sending || imageUploading}
+            voiceMode={
+              voiceUiPhase === 'preview'
+                ? 'preview'
+                : voiceUiPhase === 'paused'
+                  ? 'paused'
+                  : voiceUiPhase === 'recording'
+                    ? 'recording'
+                    : 'none'
+            }
+            voiceRecordingClock={voiceRecordingClock}
+            voicePreviewDurationSec={voicePreviewDurationSec}
+            onVoicePause={handleVoicePause}
+            onVoiceResume={handleVoiceResume}
+            onVoiceStop={handleVoiceStopToPreview}
+            onVoiceDiscardPreview={handleDiscardVoicePreview}
+            onVoiceSendPreview={handleSendVoiceMessage}
+            scrollToBottom={scrollToBottom}
+          />
+        </View>
         {/* <SocketDebugOverlay chatId={chatId} /> */}
       </KeyboardAvoidingView>
     </SafeAreaView>
