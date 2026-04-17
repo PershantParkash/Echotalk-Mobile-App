@@ -108,12 +108,15 @@ const useS3Upload = () => {
           const rawB64 = await RNFS.readFile(pathOnly, 'base64');
           body = Buffer.from(rawB64, 'base64');
         } else {
-          const res = await fetch(uri);
-          if (!res?.ok) {
-            throw new Error('Could not read image from device');
+          // On Android, `fetch(file://...)` frequently throws "Network request failed".
+          // Read the file directly from the filesystem instead.
+          const pathOnly = fileUriToFsPath(uri);
+          const exists = await RNFS.exists(pathOnly);
+          if (!exists) {
+            throw new Error('Image data not found on device.');
           }
-          const ab = await res.arrayBuffer();
-          body = Buffer.from(ab);
+          const rawB64 = await RNFS.readFile(pathOnly, 'base64');
+          body = Buffer.from(rawB64, 'base64');
         }
 
         if (body.length > maxBytes) {

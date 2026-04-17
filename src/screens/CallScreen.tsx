@@ -18,7 +18,6 @@ import {
   MicOff,
   Video,
   VideoOff,
-  Volume2,
 } from 'lucide-react-native';
 import { RootStackParamList } from '../navigation/navigation';
 import CallSocketSingleton from '../utils/sockets/call-socket';
@@ -33,6 +32,11 @@ import createAgoraRtcEngine, {
 import { NEXT_PUBLIC_AGORA_APP_ID } from '@env';
 import { generateAgoraTokenForCall } from '../utils/agora-token';
 import { incomingCallToAnswerPayload } from '../types/incomingCall';
+import { startRenderedViewFrameCapture } from '../utils/videoFrameCapture';
+import { SignAiFrameStreamer } from '../utils/ai/signAiFrameStreamer';
+import SignAiPredictionOverlay, {
+  type SignAiPrediction,
+} from '../components/SignAiPredictionOverlay';
 
 type CallNav = NativeStackNavigationProp<RootStackParamList, 'CallScreen'>;
 type CallRoute = RouteProp<RootStackParamList, 'CallScreen'>;
@@ -44,7 +48,7 @@ const CallScreen = () => {
 
   const [muted, setMuted] = useState(false);
   const [videoOn, setVideoOn] = useState(false);
-  const [speakerOn, setSpeakerOn] = useState(false);
+  // const [speakerOn, setSpeakerOn] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
   const [callStatus, setCallStatus] = useState<'calling' | 'receiving' | 'active' | 'ended'>('calling');
   const [calleeName, setCalleeName] = useState<string>('');
@@ -69,6 +73,12 @@ const CallScreen = () => {
   const [mediaReady, setMediaReady] = useState(false);
   const [callSocketReady, setCallSocketReady] = useState(false);
   const answerEmittedRef = useRef(false);
+  const localVideoCaptureRef = useRef<any | null>(null);
+  const stopFrameCaptureRef = useRef<null | (() => void)>(null);
+  const signAiStreamerRef = useRef<SignAiFrameStreamer | null>(null);
+  const [_signAiLastMessage, setSignAiLastMessage] = useState<unknown>(null);
+  const [signAiConnected, setSignAiConnected] = useState(false);
+  const [signAiPrediction, setSignAiPrediction] = useState<SignAiPrediction | null>(null);
 
   useEffect(() => {
     callTypeRef.current = callType;
@@ -457,15 +467,16 @@ const CallScreen = () => {
     }
   };
 
-  const toggleSpeaker = () => {
-    // UI-only for now; wire to audio route when available.
-    setSpeakerOn((s) => !s);
-  };
+  // const toggleSpeaker = () => {
+  //   // UI-only for now; wire to audio route when available.
+  //   setSpeakerOn((s) => !s);
+  // };
 
   const toggleHand = () => {
-    // UI-only for now; wire to signaling when available.
-    setHandRaised((h) => !h);
+    setHandRaised((value) => !value);
   };
+
+
 
   const title =
     callStatus === 'receiving'
@@ -479,10 +490,101 @@ const CallScreen = () => {
   const showVideoLayout =
     callStatus === 'active' && callType === 'video' && mediaReady;
 
+  useEffect(() => {
+    if (!signAiStreamerRef.current) {
+      const streamer = new SignAiFrameStreamer();
+      streamer.onServerMessage((msg) => {
+        setSignAiLastMessage(msg);
+        setSignAiConnected(streamer.isConnected);
+
+        const obj = msg && typeof msg === 'object' ? (msg as any) : null;
+        const payload =
+          obj?.type === 'prediction' && obj != null ? obj : obj;
+
+        if (payload && typeof payload === 'object') {
+          const pred: SignAiPrediction = {
+            current: typeof payload?.current === 'string' ? payload.current : undefined,
+            confidence:
+              typeof payload?.confidence === 'number' ? payload.confidence : undefined,
+            sentence_text:
+              typeof payload?.sentence_text === 'string' ? payload.sentence_text : undefined,
+            frames_seen:
+              typeof payload?.frames_seen === 'number' ? payload.frames_seen : undefined,
+            frames_needed:
+              typeof payload?.frames_needed === 'number' ? payload.frames_needed : undefined,
+            ready: typeof payload?.ready === 'boolean' ? payload.ready : undefined,
+            top: Array.isArray(payload?.top)
+              ? (payload.top ?? [])
+                ?.map?.((t: any) => ({
+                  label: String(t?.label ?? ''),
+                  probability: Number(t?.probability ?? 0),
+                }))
+                ?.filter?.((t: any) => t?.label)
+              : undefined,
+          };
+          setSignAiPrediction(pred);
+        }
+      });
+      signAiStreamerRef.current = streamer;
+    }
+    return () => {
+      signAiStreamerRef.current?.disconnect?.();
+      signAiStreamerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const streamer = signAiStreamerRef.current;
+    if (!streamer) return;
+
+    // Connect only while the user has enabled sign-language mode.
+    if (handRaised) {
+      streamer.start();
+      setSignAiConnected(streamer.isConnected);
+      return;
+    }
+
+    streamer.disconnect();
+    setSignAiConnected(false);
+    setSignAiLastMessage(null);
+    setSignAiPrediction(null);
+  }, [handRaised]);
+
+  useEffect(() => {
+    // Capture frames only while "hand raised" is active.
+    if (!(handRaised && showVideoLayout && videoOn)) {
+      stopFrameCaptureRef.current?.();
+      stopFrameCaptureRef.current = null;
+      return;
+    }
+
+    stopFrameCaptureRef.current?.();
+    stopFrameCaptureRef.current = startRenderedViewFrameCapture({
+      targetRef: localVideoCaptureRef,
+      // CRITICAL: stream ~8-9 fps
+      intervalMs: 120,
+      label: 'hand-raised',
+      onFrameBase64: (base64) => {
+        // Push frames to AI WS; server responses will populate the overlay.
+        signAiStreamerRef.current?.sendJpegBase64?.(base64);
+      },
+    });
+
+    return () => {
+      stopFrameCaptureRef.current?.();
+      stopFrameCaptureRef.current = null;
+    };
+  }, [handRaised, showVideoLayout, videoOn]);
+
   return (
     <SafeAreaView className="flex-1 bg-neutral-900" edges={['top']}>
       {showVideoLayout ? (
         <View className="flex-1 bg-black">
+          <SignAiPredictionOverlay
+            visible={handRaised}
+            connected={signAiConnected}
+            prediction={signAiPrediction}
+          />
           {remoteUid != null ? (
             <RtcSurfaceView
               style={styles.remoteVideo}
@@ -500,6 +602,7 @@ const CallScreen = () => {
           )}
           {videoOn ? (
             <View
+              ref={localVideoCaptureRef}
               style={[
                 styles.localPip,
                 Platform.OS === 'android' ? styles.localPipAndroid : null,
@@ -573,7 +676,7 @@ const CallScreen = () => {
           </TouchableOpacity>
 
           {/* Loud Speaker Button */}
-          <TouchableOpacity
+          {/* <TouchableOpacity
             accessibilityLabel={speakerOn ? 'Speaker off' : 'Speaker on'}
             activeOpacity={0.85}
             className={`h-[54px] w-[54px] items-center justify-center rounded-full ${speakerOn ? 'bg-white' : 'bg-neutral-700'
@@ -581,7 +684,7 @@ const CallScreen = () => {
             onPress={toggleSpeaker}
           >
             <Volume2 color="#ffffff" size={24} strokeWidth={2.2} />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
 
           {/* Mute Button */}
           <TouchableOpacity
@@ -637,8 +740,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   floatingBar: {
-    marginHorizontal: 16,
-    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    alignItems: 'center',
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 12,

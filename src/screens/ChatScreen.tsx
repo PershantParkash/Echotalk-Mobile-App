@@ -1124,14 +1124,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }
 
     try {
+      // Check if the user has the required audio permissions
       const hasAudio = await ensureAudioPermission();
+
+      // If the user doesn't have the required audio permissions, show an alert and return
       if (!hasAudio) {
         Alert.alert('Permission', 'Microphone permission is required for calls.');
         return;
       }
 
+      // If the call type is video, check if the user has the required video permissions
       if (callType === 'video') {
         const hasVideo = await ensureVideoPermission();
+        // If the user doesn't have the required video permissions, show an alert and return
         if (!hasVideo) {
           Alert.alert('Permission', 'Camera permission is required for video calls.');
           return;
@@ -1142,7 +1147,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       const fromId = currentUserId;
       const toId = otherUser.id;
       const roomName = generateRoomName(fromId, toId);
-
       const callerName = userDetails.fullName ?? '';
       const callerProfileImage = userDetails.profileImage ?? '';
       const calleeName = otherUser.fullName ?? otherUser.phoneNumber;
@@ -1168,14 +1172,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         'Unable to start the call right now. Please try again.',
       );
     }
-  };
-
-  const handleStartAudioCall = () => {
-    startCall('audio');
-  };
-
-  const handleStartVideoCall = () => {
-    startCall('video');
   };
 
   return (
@@ -1242,13 +1238,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           <View className="flex-row">
             <TouchableOpacity
               className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-2"
-              onPress={handleStartVideoCall}
+              onPress={() => startCall('video')}
             >
               <Video size={20} color="#000" />
             </TouchableOpacity>
             <TouchableOpacity
               className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
-              onPress={handleStartAudioCall}
+              onPress={() => startCall('audio')}
             >
               <Phone size={20} color="#000" />
             </TouchableOpacity>

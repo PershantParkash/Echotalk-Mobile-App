@@ -64,6 +64,9 @@ export default function ContactsDrawer({
   isInitiatingChat = false,
 }: ContactsDrawerProps) {
   const [allUsersPhoneNumbers, setAllUsersPhoneNumbers] = useState<any>([]);
+  const [userIdByNormalizedPhone, setUserIdByNormalizedPhone] = useState<
+    Record<string, string | number>
+  >({});
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [activeTab, setActiveTab] = useState<'saved' | 'device'>('saved');
   const [allSavedContacts, setAllSavedContacts] = useState<any>({
@@ -73,6 +76,12 @@ export default function ContactsDrawer({
 
   const { getAllUsers } = useUsersService();
   const { getAllContacts } = useContactsService();
+
+  const normalizePhone = (phone: string | null | undefined): string => {
+    return String(phone ?? '')
+      ?.replaceAll?.(' ', '')
+      ?.trim?.() ?? '';
+  };
 
   useEffect(() => {
     if (isVisible) {
@@ -99,12 +108,32 @@ export default function ContactsDrawer({
     setLoadingUsers(true);
     const allUsers = await getAllUsers();
     setLoadingUsers(false);
-    setAllUsersPhoneNumbers(allUsers?.map((user: any) => user?.phoneNumber?.replaceAll(" ", "")));
+    const normalizedUsers =
+      (allUsers ?? [])
+        ?.map?.((user: any) => {
+          const normalizedPhone = normalizePhone(user?.phoneNumber);
+          const id = user?.id ?? user?._id ?? user?.userId ?? null;
+          return { normalizedPhone, id };
+        })
+        ?.filter?.((u: any) => u?.normalizedPhone && u?.id != null) ?? [];
+
+    setAllUsersPhoneNumbers(normalizedUsers?.map?.((u: any) => u?.normalizedPhone) ?? []);
+    setUserIdByNormalizedPhone(
+      normalizedUsers?.reduce?.((acc: Record<string, string | number>, u: any) => {
+        acc[String(u?.normalizedPhone)] = u?.id as any;
+        return acc;
+      }, {}) ?? {}
+    );
   }
 
   const handleContact = (item: PhoneContactItem) => {
-    if (allUsersPhoneNumbers?.includes?.(item?.phoneNumber?.replaceAll(" ", ""))) {
-      onPressChatContact?.(item)
+    const normalized = normalizePhone(item?.phoneNumber);
+    if (allUsersPhoneNumbers?.includes?.(normalized)) {
+      const userId = userIdByNormalizedPhone?.[normalized] ?? null;
+      onPressChatContact?.({
+        ...item,
+        userId: item?.userId ?? userId,
+      })
     } else {
       Share?.share?.({
         title: 'Invite to EchoTalk',
@@ -266,7 +295,7 @@ export default function ContactsDrawer({
 
                             {!loadingUsers ? (
                               allUsersPhoneNumbers?.includes?.(
-                                phoneContactItem?.phoneNumber?.replaceAll?.(" ", "") ?? ''
+                                normalizePhone(phoneContactItem?.phoneNumber)
                               ) ? (
                                 <TouchableOpacity
                                   activeOpacity={0.85}
@@ -322,7 +351,7 @@ export default function ContactsDrawer({
                         </View>
                         {!loadingUsers ? (
                           allUsersPhoneNumbers?.includes?.(
-                            item?.phoneNumber?.replaceAll?.(" ", "") ?? ''
+                            normalizePhone(item?.phoneNumber)
                           ) ? (
                             <TouchableOpacity
                               activeOpacity={0.85}

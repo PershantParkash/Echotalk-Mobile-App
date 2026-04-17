@@ -7,6 +7,8 @@ const axiosClient = axios.create({
   timeout: 10000,
 });
 
+console.log("baseURL", NEXT_PUBLIC_API_URL)
+
 axiosClient.interceptors.request.use(
   async (config) => {
     const accessToken = await getAccessToken();

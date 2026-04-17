@@ -1,4 +1,4 @@
- // adjust path if needed
+// adjust path if needed
 import { getAccessToken } from '../utils/storage'; // adjust path
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';

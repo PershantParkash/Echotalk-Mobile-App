@@ -18,11 +18,21 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/navigation';
 import Feather from 'react-native-vector-icons/Feather';
 import { PhoneInputWithCountry } from '../ui/PhoneInputWithCountry';
+import useUsersService from '../../services/user';
+import { useDispatch, useSelector } from 'react-redux';
+import { RootState } from '../../store';
+import {
+  setCurrentStep,
+  setForceCompleteProfile,
+  setUpdateAppUser,
+  setUserDetails,
+} from '../../store/user/user.actions';
+import { RegisterSteps } from '../../store/user/user.types';
 
 type LoginScreenProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export default function LoginComponent() {
-  const [countryCode, setCountryCode] = useState('');
+  const [countryCode, setCountryCode] = useState('92');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,7 +42,20 @@ export default function LoginComponent() {
   }>({});
 
   const { signin, loading } = useAuthService();
+  const { getUserDetails } = useUsersService();
+  const dispatch = useDispatch();
+  const { user } = useSelector((state: RootState) => state.user);
   const navigation = useNavigation<LoginScreenProp>();
+
+  const isProfileComplete = (d: any): boolean => {
+    const fullName = d?.fullName?.trim?.() ?? '';
+    const parts = fullName.split(' ').filter(Boolean);
+    const firstName = parts?.[0]?.trim?.() ?? '';
+    const lastName = parts?.slice?.(1)?.join?.(' ')?.trim?.() ?? '';
+    const email = d?.email?.trim?.() ?? '';
+    const image = d?.profileImage?.trim?.() ?? '';
+    return !!(firstName && lastName && email && image);
+  };
 
   const validate = () => {
     let tempErrors: { phoneNumber?: string; password?: string } = {};
@@ -70,7 +93,40 @@ export default function LoginComponent() {
           text2: 'Welcome back! 🎉',
         });
 
-        navigation.replace('MainTabs', { screen: 'HomeTab' });
+        try {
+          const details = await getUserDetails();
+          dispatch(setUserDetails(details));
+
+          const fullName = details?.fullName?.trim?.() ?? '';
+          const parts = fullName.split(' ').filter(Boolean);
+          const firstName = parts?.[0] ?? '';
+          const lastName = parts?.slice?.(1)?.join?.(' ') ?? '';
+
+          dispatch(
+            setUpdateAppUser({
+              ...user,
+              firstName: user?.firstName?.trim?.()?.length ? user.firstName : firstName,
+              lastName: user?.lastName?.trim?.()?.length ? user.lastName : lastName,
+              email: user?.email?.trim?.()?.length ? user.email : (details?.email?.trim?.() ?? ''),
+              image: user?.image?.trim?.()?.length
+                ? user.image
+                : (details?.profileImage?.trim?.() ?? ''),
+            }),
+          );
+
+          if (!isProfileComplete(details)) {
+            dispatch(setForceCompleteProfile(true));
+            dispatch(setCurrentStep(RegisterSteps.PersonalDetails));
+            navigation.replace('Register');
+            return;
+          }
+
+          dispatch(setForceCompleteProfile(false));
+          navigation.replace('MainTabs', { screen: 'HomeTab' });
+        } catch {
+          // If profile fetch fails, still allow login into the app.
+          navigation.replace('MainTabs', { screen: 'HomeTab' });
+        }
       } else {
         Toast.show({
           type: 'error',
