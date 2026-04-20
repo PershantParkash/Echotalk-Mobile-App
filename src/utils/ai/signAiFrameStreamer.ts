@@ -13,6 +13,8 @@ type SignAiFrameStreamerOptions = {
   jpegQuality?: number;
   /** Auto reconnect on close/error. Default: true */
   autoReconnect?: boolean;
+  /** Print incoming ws messages to console. Default: false */
+  debug?: boolean;
   /** Backoff base delay in ms. Default: 500 */
   reconnectBaseDelayMs?: number;
   /** Max backoff delay in ms. Default: 10_000 */
@@ -24,6 +26,7 @@ export class SignAiFrameStreamer {
   private url: string;
   private minIntervalMs: number;
   private jpegQuality: number;
+  private debug: boolean;
   private lastSentAt = 0;
   private connecting: Promise<void> | null = null;
   private shouldReconnect = true;
@@ -43,6 +46,7 @@ export class SignAiFrameStreamer {
     this.minIntervalMs = Math.max(0, Math.floor(options?.minIntervalMs ?? 120));
     this.jpegQuality = options?.jpegQuality ?? 0.65;
     this.autoReconnect = options?.autoReconnect ?? true;
+    this.debug = options?.debug ?? false;
     this.reconnectBaseDelayMs = Math.max(
       50,
       Math.floor(options?.reconnectBaseDelayMs ?? 500),
@@ -118,7 +122,9 @@ export class SignAiFrameStreamer {
             }
           }
 
-          // console.log('[SignAI] server response', payload);
+          if (this.debug) {
+            console.log('[SignAI] ws message', payload);
+          }
           this.onMessageHandler?.(payload);
         };
 
@@ -246,10 +252,13 @@ export class SignAiFrameStreamer {
       this.scheduleReconnect();
       return;
     }
-
-    console.log('base64', base64)
-
-    ws.send?.(JSON.stringify({ frame: base64 }));
+    try {
+      ws.send?.(JSON.stringify({ frame: base64 }));
+    } catch {
+      // If sending fails, queue latest and let reconnect logic recover.
+      this.lastQueuedFrameBase64 = base64;
+      this.scheduleReconnect();
+    }
 
     // console.log('[SignAI] sent frame', { size: base64?.length ?? 0 });
   }
@@ -274,10 +283,12 @@ export class SignAiFrameStreamer {
       this.scheduleReconnect();
       return;
     }
-
-    console.log('base64', base64)
-
-    ws.send?.(JSON.stringify({ frame: base64 }));
+    try {
+      ws.send?.(JSON.stringify({ frame: base64 }));
+    } catch {
+      this.lastQueuedFrameBase64 = base64;
+      this.scheduleReconnect();
+    }
   }
 }
 

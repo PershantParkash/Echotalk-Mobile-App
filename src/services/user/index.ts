@@ -29,6 +29,7 @@ const useUsersService = () => {
   };
 
   const getUserDetails = async () => {
+    console.log('getUserDetails', UsersEndpointsV1.getUserDetails)
     return await callApi({
       method: "get",
       url: UsersEndpointsV1.getUserDetails,

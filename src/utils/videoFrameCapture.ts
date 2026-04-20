@@ -3,6 +3,8 @@ import { captureRef } from 'react-native-view-shot';
 type StartRenderedViewFrameCaptureParams = {
   targetRef: React.RefObject<any>;
   intervalMs?: number;
+  /** Fail-safe timeout for a single snapshot attempt (ms). */
+  captureTimeoutMs?: number;
   label?: string;
   onFrameBase64?: (base64: string) => void;
 };
@@ -14,6 +16,7 @@ type StartRenderedViewFrameCaptureParams = {
 export function startRenderedViewFrameCapture({
   targetRef,
   intervalMs = 750,
+  captureTimeoutMs = 1500,
   label = 'call-frame',
   onFrameBase64,
 }: StartRenderedViewFrameCaptureParams) {
@@ -27,12 +30,19 @@ export function startRenderedViewFrameCapture({
 
     inFlight = true;
     try {
-      const startedAt = Date.now();
-      const base64 = await captureRef(node, {
+      const capturePromise = captureRef(node, {
         format: 'jpg',
         quality: 0.55,
         result: 'base64',
       });
+
+      const timeoutMs = Math.max(50, Math.floor(captureTimeoutMs ?? 0));
+      const base64 = await Promise.race([
+        capturePromise,
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('capture timeout')), timeoutMs),
+        ),
+      ]);
 
       onFrameBase64?.(base64);
 
@@ -51,8 +61,14 @@ export function startRenderedViewFrameCapture({
   };
 
   // Fire quickly, then continue on an interval.
-  void tick();
-  const timer = setInterval(() => void tick(), intervalMs);
+  tick().catch(() => {
+    // errors are already handled inside tick; this is just to satisfy lint
+  });
+  const timer = setInterval(() => {
+    tick().catch(() => {
+      // errors are already handled inside tick; this is just to satisfy lint
+    });
+  }, intervalMs);
 
   return () => {
     stopped = true;

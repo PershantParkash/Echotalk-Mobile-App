@@ -28,6 +28,7 @@ import createAgoraRtcEngine, {
   ClientRoleType,
   RenderModeType,
   RtcSurfaceView,
+  RtcTextureView,
 } from 'react-native-agora';
 import { NEXT_PUBLIC_AGORA_APP_ID } from '@env';
 import { generateAgoraTokenForCall } from '../utils/agora-token';
@@ -492,8 +493,9 @@ const CallScreen = () => {
 
   useEffect(() => {
     if (!signAiStreamerRef.current) {
-      const streamer = new SignAiFrameStreamer();
+      const streamer = new SignAiFrameStreamer({ debug: true });
       streamer.onServerMessage((msg) => {
+        console.log('====>', msg);
         setSignAiLastMessage(msg);
         setSignAiConnected(streamer.isConnected);
 
@@ -522,6 +524,7 @@ const CallScreen = () => {
                 ?.filter?.((t: any) => t?.label)
               : undefined,
           };
+          console.log('pred', pred)
           setSignAiPrediction(pred);
         }
       });
@@ -563,9 +566,13 @@ const CallScreen = () => {
       targetRef: localVideoCaptureRef,
       // CRITICAL: stream ~8-9 fps
       intervalMs: 120,
+      // Fail-safe: react-native-view-shot can occasionally hang a snapshot call.
+      // If that happens, we want to recover and keep sending frames.
+      captureTimeoutMs: 1200,
       label: 'hand-raised',
       onFrameBase64: (base64) => {
         // Push frames to AI WS; server responses will populate the overlay.
+        console.log('base64', base64)
         signAiStreamerRef.current?.sendJpegBase64?.(base64);
       },
     });
@@ -603,18 +610,28 @@ const CallScreen = () => {
           {videoOn ? (
             <View
               ref={localVideoCaptureRef}
+              collapsable={false}
               style={[
                 styles.localPip,
                 Platform.OS === 'android' ? styles.localPipAndroid : null,
               ]}
             >
-              <RtcSurfaceView
-                style={styles.localVideo}
-                zOrderMediaOverlay
-                canvas={{
-                  renderMode: RenderModeType.RenderModeHidden,
-                }}
-              />
+              {Platform.OS === 'android' ? (
+                <RtcTextureView
+                  style={styles.localVideo}
+                  canvas={{
+                    renderMode: RenderModeType.RenderModeHidden,
+                  }}
+                />
+              ) : (
+                <RtcSurfaceView
+                  style={styles.localVideo}
+                  zOrderMediaOverlay
+                  canvas={{
+                    renderMode: RenderModeType.RenderModeHidden,
+                  }}
+                />
+              )}
             </View>
           ) : null}
           <View
