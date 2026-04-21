@@ -89,6 +89,7 @@ const findExistingConversation = <T extends { users?: { id?: any }[] | null }>(
 };
 
 const shouldInitiateChatFromContact = (contact: PhoneContactItem): boolean => {
+  console.log('shouldInitiateChatFromContact', contact);
   return Boolean(contact?.userId != null && `${contact?.userId}`?.trim?.() !== '');
 };
 
@@ -369,6 +370,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   };
 
   const handleInitiateChat = async (contact: PhoneContactItem) => {
+    console.log('handleInitiateChat', contact);
     if (!shouldInitiateChatFromContact(contact)) {
       Toast.show?.({
         type: 'info',

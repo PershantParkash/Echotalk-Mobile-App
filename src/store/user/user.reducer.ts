@@ -38,6 +38,7 @@ const initialState: Types.UserReducerState = {
   },
   currentStep: Types.RegisterSteps.AccountType,
   firebaseOtpVerificationId: "",
+  forceCompleteProfile: false,
 
   userDetails: {
     accountType: Types.AccountType.Individual,
@@ -123,6 +124,12 @@ export const userReducer = (state = initialState, action: Types.ActionType) => {
       return {
         ...state,
         currentStep: action.payload,
+      };
+
+    case Types.SET_FORCE_COMPLETE_PROFILE:
+      return {
+        ...state,
+        forceCompleteProfile: !!action.payload,
       };
 
     case Types.SET_OTP_VERIFICATION_ID:

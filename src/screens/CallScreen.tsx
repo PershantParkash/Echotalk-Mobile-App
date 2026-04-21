@@ -8,18 +8,16 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import type {
-  NativeStackNavigationProp,
-  RouteProp,
-} from '@react-navigation/native-stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   PhoneOff,
+  Hand,
   Mic,
   MicOff,
   Video,
   VideoOff,
-  Captions,
 } from 'lucide-react-native';
 import { RootStackParamList } from '../navigation/navigation';
 import CallSocketSingleton from '../utils/sockets/call-socket';
@@ -30,10 +28,16 @@ import createAgoraRtcEngine, {
   ClientRoleType,
   RenderModeType,
   RtcSurfaceView,
+  RtcTextureView,
 } from 'react-native-agora';
 import { NEXT_PUBLIC_AGORA_APP_ID } from '@env';
 import { generateAgoraTokenForCall } from '../utils/agora-token';
 import { incomingCallToAnswerPayload } from '../types/incomingCall';
+import { startRenderedViewFrameCapture } from '../utils/videoFrameCapture';
+import { SignAiFrameStreamer } from '../utils/ai/signAiFrameStreamer';
+import SignAiPredictionOverlay, {
+  type SignAiPrediction,
+} from '../components/SignAiPredictionOverlay';
 
 type CallNav = NativeStackNavigationProp<RootStackParamList, 'CallScreen'>;
 type CallRoute = RouteProp<RootStackParamList, 'CallScreen'>;
@@ -45,7 +49,8 @@ const CallScreen = () => {
 
   const [muted, setMuted] = useState(false);
   const [videoOn, setVideoOn] = useState(false);
-  const [subtitlesOn, setSubtitlesOn] = useState(false);
+  // const [speakerOn, setSpeakerOn] = useState(false);
+  const [handRaised, setHandRaised] = useState(false);
   const [callStatus, setCallStatus] = useState<'calling' | 'receiving' | 'active' | 'ended'>('calling');
   const [calleeName, setCalleeName] = useState<string>('');
   const [roomName, setRoomName] = useState<string>('');
@@ -69,6 +74,12 @@ const CallScreen = () => {
   const [mediaReady, setMediaReady] = useState(false);
   const [callSocketReady, setCallSocketReady] = useState(false);
   const answerEmittedRef = useRef(false);
+  const localVideoCaptureRef = useRef<any | null>(null);
+  const stopFrameCaptureRef = useRef<null | (() => void)>(null);
+  const signAiStreamerRef = useRef<SignAiFrameStreamer | null>(null);
+  const [_signAiLastMessage, setSignAiLastMessage] = useState<unknown>(null);
+  const [signAiConnected, setSignAiConnected] = useState(false);
+  const [signAiPrediction, setSignAiPrediction] = useState<SignAiPrediction | null>(null);
 
   useEffect(() => {
     callTypeRef.current = callType;
@@ -421,8 +432,8 @@ const CallScreen = () => {
       fromId === selfId
         ? toId
         : toId === selfId
-        ? fromId
-        : undefined;
+          ? fromId
+          : undefined;
 
     if (!otherUserId) {
       return;
@@ -457,22 +468,130 @@ const CallScreen = () => {
     }
   };
 
+  // const toggleSpeaker = () => {
+  //   // UI-only for now; wire to audio route when available.
+  //   setSpeakerOn((s) => !s);
+  // };
+
+  const toggleHand = () => {
+    setHandRaised((value) => !value);
+  };
+
+
+
   const title =
     callStatus === 'receiving'
       ? 'Incoming call'
       : callStatus === 'active'
-      ? callType === 'video'
-        ? 'In video call'
-        : 'In call'
-      : 'Calling...';
+        ? callType === 'video'
+          ? 'In video call'
+          : 'In call'
+        : 'Calling...';
 
   const showVideoLayout =
     callStatus === 'active' && callType === 'video' && mediaReady;
+
+  useEffect(() => {
+    if (!signAiStreamerRef.current) {
+      const streamer = new SignAiFrameStreamer({ debug: true });
+      streamer.onServerMessage((msg) => {
+        console.log('====>', msg);
+        setSignAiLastMessage(msg);
+        setSignAiConnected(streamer.isConnected);
+
+        const obj = msg && typeof msg === 'object' ? (msg as any) : null;
+        const payload =
+          obj?.type === 'prediction' && obj != null ? obj : obj;
+
+        if (payload && typeof payload === 'object') {
+          const pred: SignAiPrediction = {
+            current: typeof payload?.current === 'string' ? payload.current : undefined,
+            confidence:
+              typeof payload?.confidence === 'number' ? payload.confidence : undefined,
+            sentence_text:
+              typeof payload?.sentence_text === 'string' ? payload.sentence_text : undefined,
+            frames_seen:
+              typeof payload?.frames_seen === 'number' ? payload.frames_seen : undefined,
+            frames_needed:
+              typeof payload?.frames_needed === 'number' ? payload.frames_needed : undefined,
+            ready: typeof payload?.ready === 'boolean' ? payload.ready : undefined,
+            top: Array.isArray(payload?.top)
+              ? (payload.top ?? [])
+                ?.map?.((t: any) => ({
+                  label: String(t?.label ?? ''),
+                  probability: Number(t?.probability ?? 0),
+                }))
+                ?.filter?.((t: any) => t?.label)
+              : undefined,
+          };
+          console.log('pred', pred)
+          setSignAiPrediction(pred);
+        }
+      });
+      signAiStreamerRef.current = streamer;
+    }
+    return () => {
+      signAiStreamerRef.current?.disconnect?.();
+      signAiStreamerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const streamer = signAiStreamerRef.current;
+    if (!streamer) return;
+
+    // Connect only while the user has enabled sign-language mode.
+    if (handRaised) {
+      streamer.start();
+      setSignAiConnected(streamer.isConnected);
+      return;
+    }
+
+    streamer.disconnect();
+    setSignAiConnected(false);
+    setSignAiLastMessage(null);
+    setSignAiPrediction(null);
+  }, [handRaised]);
+
+  useEffect(() => {
+    // Capture frames only while "hand raised" is active.
+    if (!(handRaised && showVideoLayout && videoOn)) {
+      stopFrameCaptureRef.current?.();
+      stopFrameCaptureRef.current = null;
+      return;
+    }
+
+    stopFrameCaptureRef.current?.();
+    stopFrameCaptureRef.current = startRenderedViewFrameCapture({
+      targetRef: localVideoCaptureRef,
+      // CRITICAL: stream ~8-9 fps
+      intervalMs: 120,
+      // Fail-safe: react-native-view-shot can occasionally hang a snapshot call.
+      // If that happens, we want to recover and keep sending frames.
+      captureTimeoutMs: 1200,
+      label: 'hand-raised',
+      onFrameBase64: (base64) => {
+        // Push frames to AI WS; server responses will populate the overlay.
+        console.log('base64', base64)
+        signAiStreamerRef.current?.sendJpegBase64?.(base64);
+      },
+    });
+
+    return () => {
+      stopFrameCaptureRef.current?.();
+      stopFrameCaptureRef.current = null;
+    };
+  }, [handRaised, showVideoLayout, videoOn]);
 
   return (
     <SafeAreaView className="flex-1 bg-neutral-900" edges={['top']}>
       {showVideoLayout ? (
         <View className="flex-1 bg-black">
+          <SignAiPredictionOverlay
+            visible={handRaised}
+            connected={signAiConnected}
+            prediction={signAiPrediction}
+          />
           {remoteUid != null ? (
             <RtcSurfaceView
               style={styles.remoteVideo}
@@ -490,18 +609,29 @@ const CallScreen = () => {
           )}
           {videoOn ? (
             <View
+              ref={localVideoCaptureRef}
+              collapsable={false}
               style={[
                 styles.localPip,
                 Platform.OS === 'android' ? styles.localPipAndroid : null,
               ]}
             >
-              <RtcSurfaceView
-                style={styles.localVideo}
-                zOrderMediaOverlay
-                canvas={{
-                  renderMode: RenderModeType.RenderModeHidden,
-                }}
-              />
+              {Platform.OS === 'android' ? (
+                <RtcTextureView
+                  style={styles.localVideo}
+                  canvas={{
+                    renderMode: RenderModeType.RenderModeHidden,
+                  }}
+                />
+              ) : (
+                <RtcSurfaceView
+                  style={styles.localVideo}
+                  zOrderMediaOverlay
+                  canvas={{
+                    renderMode: RenderModeType.RenderModeHidden,
+                  }}
+                />
+              )}
             </View>
           ) : null}
           <View
@@ -532,55 +662,69 @@ const CallScreen = () => {
         </View>
       )}
 
-      <SafeAreaView edges={['bottom']} className="border-t border-neutral-800 bg-neutral-900 px-4">
-        <View className="flex flex-row items-center justify-between gap-2 py-6">
+      <SafeAreaView edges={['bottom']} className="bg-transparent">
+        <View
+          style={styles.floatingBar}
+          className="flex flex-row items-center justify-between"
+        >
+          {/* Sign Language */}
           <TouchableOpacity
-            accessibilityLabel="End call"
+            accessibilityLabel={handRaised ? 'Lower hand' : 'Raise hand'}
             activeOpacity={0.85}
-            className="h-[68px] w-[68px] items-center justify-center rounded-full bg-red-600"
-            onPress={handleEndPress}
-          >
-            <PhoneOff color="#ffffff" size={30} strokeWidth={2} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            accessibilityLabel={muted ? 'Unmute' : 'Mute'}
-            activeOpacity={0.85}
-            className={`h-[68px] w-[68px] items-center justify-center rounded-full ${muted ? 'bg-red-500/90' : 'bg-neutral-600'
+            className={`h-[54px] w-[54px] items-center justify-center rounded-full ${handRaised ? 'bg-green-500' : 'bg-neutral-700'
               }`}
-            onPress={toggleMute}
+            onPress={toggleHand}
           >
-            {muted ? (
-              <MicOff color="#ffffff" size={30} strokeWidth={2} />
-            ) : (
-              <Mic color="#ffffff" size={30} strokeWidth={2} />
-            )}
+            <Hand color="#ffffff" size={24} strokeWidth={2.2} />
           </TouchableOpacity>
 
+          {/* Video Button */}
           <TouchableOpacity
             accessibilityLabel={videoOn ? 'Turn off video' : 'Turn on video'}
             activeOpacity={0.85}
-            className={`h-[68px] w-[68px] items-center justify-center rounded-full ${videoOn ? 'bg-neutral-600' : 'bg-neutral-500'
-              }`}
+            className="h-[54px] w-[54px] items-center justify-center rounded-full bg-neutral-700"
             onPress={toggleVideo}
           >
             {videoOn ? (
-              <Video color="#ffffff" size={30} strokeWidth={2} />
+              <Video color="#ffffff" size={24} strokeWidth={2.2} />
             ) : (
-              <VideoOff color="#ffffff" size={30} strokeWidth={2} />
+              <VideoOff color="#ffffff" size={24} strokeWidth={2.2} />
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            accessibilityLabel={
-              subtitlesOn ? 'Turn off subtitles' : 'Turn on subtitles'
-            }
+          {/* Loud Speaker Button */}
+          {/* <TouchableOpacity
+            accessibilityLabel={speakerOn ? 'Speaker off' : 'Speaker on'}
             activeOpacity={0.85}
-            className={`h-[68px] w-[68px] items-center justify-center rounded-full ${subtitlesOn ? 'bg-emerald-600' : 'bg-neutral-600'
+            className={`h-[54px] w-[54px] items-center justify-center rounded-full ${speakerOn ? 'bg-white' : 'bg-neutral-700'
               }`}
-            onPress={() => setSubtitlesOn((s) => !s)}
+            onPress={toggleSpeaker}
           >
-            <Captions color="#ffffff" size={30} strokeWidth={2} />
+            <Volume2 color="#ffffff" size={24} strokeWidth={2.2} />
+          </TouchableOpacity> */}
+
+          {/* Mute Button */}
+          <TouchableOpacity
+            accessibilityLabel={muted ? 'Unmute' : 'Mute'}
+            activeOpacity={0.85}
+            className="h-[54px] w-[54px] items-center justify-center rounded-full bg-neutral-700"
+            onPress={toggleMute}
+          >
+            {muted ? (
+              <MicOff color="#ffffff" size={24} strokeWidth={2.2} />
+            ) : (
+              <Mic color="#ffffff" size={24} strokeWidth={2.2} />
+            )}
+          </TouchableOpacity>
+
+          {/* End Call Button */}
+          <TouchableOpacity
+            accessibilityLabel="End call"
+            activeOpacity={0.85}
+            className="h-[54px] w-[54px] items-center justify-center rounded-full bg-red-600"
+            onPress={handleEndPress}
+          >
+            <PhoneOff color="#ffffff" size={24} strokeWidth={2.2} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -611,6 +755,26 @@ const styles = StyleSheet.create({
   localVideo: {
     flex: 1,
     width: '100%',
+  },
+  floatingBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(23,23,23,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    ...(Platform.OS === 'android'
+      ? { elevation: 10 }
+      : {
+        shadowColor: '#000',
+        shadowOpacity: 0.35,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+      }),
   },
 });
 

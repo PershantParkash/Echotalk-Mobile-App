@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Sign Language Prediction</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #101418;
+        color: #f2f6fa;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        padding: 24px;
+      }
+      .app {
+        width: 100%;
+        max-width: 1100px;
+        display: grid;
+        grid-template-columns: 680px 1fr;
+        gap: 24px;
+        align-items: start;
+      }
+      .panel {
+        background: #182028;
+        border: 1px solid #24303b;
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      }
+      h1 {
+        margin: 0 0 14px;
+        font-size: 28px;
+      }
+      h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+        color: #8fd3ff;
+      }
+      #videoElement {
+        width: 100%;
+        max-width: 640px;
+        aspect-ratio: 4 / 3;
+        background: #000;
+        border-radius: 12px;
+        border: 1px solid #2c3945;
+        display: block;
+      }
+      .status {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #121920;
+        border: 1px solid #26313b;
+        color: #8fd3ff;
+        font-size: 14px;
+      }
+      .big-card {
+        background: #121920;
+        border: 1px solid #26313b;
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 14px;
+      }
+      .label {
+        font-size: 13px;
+        color: #8aa0b2;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .value {
+        font-size: 34px;
+        font-weight: 700;
+        color: #6dff9d;
+        line-height: 1.2;
+        word-break: break-word;
+      }
+      .muted {
+        color: #9fb0bd;
+        font-size: 14px;
+      }
+      .sentence {
+        min-height: 84px;
+        font-size: 30px;
+        font-weight: 700;
+        color: #ffd166;
+        line-height: 1.35;
+        word-break: break-word;
+      }
+      .prob-row {
+        margin-bottom: 12px;
+      }
+      .prob-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 14px;
+        margin-bottom: 6px;
+      }
+      .bar {
+        width: 100%;
+        height: 12px;
+        background: #0d1318;
+        border: 1px solid #2a3641;
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .fill {
+        height: 100%;
+        background: linear-gradient(90deg, #32c5ff, #6dff9d);
+        width: 0%;
+        transition: width 0.18s ease;
+      }
+      .meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .meta .small {
+        background: #121920;
+        border: 1px solid #26313b;
+        border-radius: 12px;
+        padding: 12px;
+      }
+      @media (max-width: 980px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+        #videoElement {
+          max-width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="panel">
+        <h1>🟢 Live Sign Language Prediction</h1>
+        <video id="videoElement" autoplay playsinline muted></video>
+        <div id="status" class="status">Connecting...</div>
+      </div>
+
+      <div class="panel">
+        <div class="big-card">
+          <div class="label">Current Sign</div>
+          <div id="currentSign" class="value">Waiting...</div>
+          <div id="confidenceText" class="muted">Confidence: 0%</div>
+        </div>
+
+        <div class="big-card">
+          <div class="label">Built Sentence</div>
+          <div id="sentenceText" class="sentence">—</div>
+        </div>
+
+        <div class="big-card">
+          <h2>Top Predictions</h2>
+          <div id="probabilities"></div>
+        </div>
+
+        <div class="meta">
+          <div class="small">
+            <div class="label">Frames Seen</div>
+            <div id="framesSeen" class="muted">0</div>
+          </div>
+          <div class="small">
+            <div class="label">Frames Needed</div>
+            <div id="framesNeeded" class="muted">8</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname || "localhost"}:8765`;
+      const WS_URL = 'wss://socket.echotalk.co.uk/';
+      const SEND_INTERVAL_MS = 120;
+      const JPEG_QUALITY = 0.65;
+      const CAPTURE_WIDTH = 640;
+      const CAPTURE_HEIGHT = 480;
+
+      const video = document.getElementById('videoElement');
+      const statusEl = document.getElementById('status');
+      const currentSignEl = document.getElementById('currentSign');
+      const confidenceEl = document.getElementById('confidenceText');
+      const sentenceEl = document.getElementById('sentenceText');
+      const probsEl = document.getElementById('probabilities');
+      const framesSeenEl = document.getElementById('framesSeen');
+      const framesNeededEl = document.getElementById('framesNeeded');
+
+      const hiddenCanvas = document.createElement('canvas');
+      hiddenCanvas.width = CAPTURE_WIDTH;
+      hiddenCanvas.height = CAPTURE_HEIGHT;
+      const hiddenCtx = hiddenCanvas.getContext('2d');
+
+      let ws = null;
+      let sendTimer = null;
+
+      async function startCamera() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: CAPTURE_WIDTH, height: CAPTURE_HEIGHT },
+            audio: false,
+          });
+          video.srcObject = stream;
+          statusEl.textContent =
+            '📷 Camera started. Connecting to prediction server...';
+        } catch (error) {
+          statusEl.textContent = `⚠️ Camera error: ${error.message || error}`;
+        }
+      }
+
+      function startSendingFrames() {
+        if (sendTimer) return;
+
+        sendTimer = setInterval(() => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          if (!video.videoWidth || video.readyState < 2) return;
+
+          hiddenCtx.drawImage(
+            video,
+            0,
+            0,
+            hiddenCanvas.width,
+            hiddenCanvas.height,
+          );
+          const dataURL = hiddenCanvas.toDataURL('image/jpeg', JPEG_QUALITY);
+          const base64data = dataURL.split(',')[1];
+          ws.send(JSON.stringify({ frame: base64data }));
+        }, SEND_INTERVAL_MS);
+      }
+
+      function renderProbabilities(top = []) {
+        if (!top.length) {
+          probsEl.innerHTML =
+            '<div class="muted">Not enough frames yet for prediction.</div>';
+          return;
+        }
+
+        probsEl.innerHTML = top
+          .map(item => {
+            const percent = Math.max(0, Math.min(100, item.probability * 100));
+            return `
+          <div class="prob-row">
+            <div class="prob-head">
+              <span>${item.label}</span>
+              <span>${percent.toFixed(1)}%</span>
+            </div>
+            <div class="bar"><div class="fill" style="width:${percent}%"></div></div>
+          </div>
+        `;
+          })
+          .join('');
+      }
+
+      function renderPrediction(data) {
+        currentSignEl.textContent = data.current || 'unknown';
+        confidenceEl.textContent = `Confidence: ${((data.confidence || 0) * 100).toFixed(1)}%`;
+        sentenceEl.textContent =
+          data.sentence_text && data.sentence_text.trim()
+            ? data.sentence_text
+            : '—';
+        framesSeenEl.textContent = String(data.frames_seen ?? 0);
+        framesNeededEl.textContent = String(data.frames_needed ?? 0);
+        renderProbabilities(data.top || []);
+
+        if (data.ready) {
+          statusEl.textContent = '✅ Predicting live';
+        } else {
+          statusEl.textContent = `⏳ Warming up... ${data.frames_needed ?? 0} more frames needed`;
+        }
+      }
+
+      function connectWebSocket() {
+        ws = new WebSocket(WS_URL);
+
+        ws.onopen = () => {
+          statusEl.textContent = '✅ Connected to server';
+          startSendingFrames();
+        };
+
+        ws.onmessage = event => {
+          try {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'ready') {
+              statusEl.textContent = `✅ Server ready | actions: ${(data.actions || []).join(', ')}`;
+              return;
+            }
+
+            if (data.type === 'error') {
+              statusEl.textContent = `⚠️ Server error: ${data.error}`;
+              return;
+            }
+
+            if (data.type === 'prediction') {
+              renderPrediction(data);
+            }
+          } catch (error) {
+            console.error('Message parse error:', error);
+            statusEl.textContent = '⚠️ Invalid server response';
+          }
+        };
+
+        ws.onclose = () => {
+          statusEl.textContent = '❌ Disconnected. Reconnecting...';
+          setTimeout(connectWebSocket, 2000);
+        };
+
+        ws.onerror = error => {
+          console.error('WebSocket error:', error);
+          try {
+            ws.close();
+          } catch (_) {}
+        };
+      }
+
+      startCamera();
+      connectWebSocket();
+    </script>
+  </body>
+</html>

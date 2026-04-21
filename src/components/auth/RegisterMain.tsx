@@ -22,7 +22,9 @@ import ExperienceForm from '../register-forms/Experience'
 import CertificationForm from '../register-forms/Certification';
 
 export default function RegisterMain() {
-  const { currentStep } = useSelector((state: RootState) => state.user);
+  const { currentStep, forceCompleteProfile } = useSelector(
+    (state: RootState) => state.user,
+  );
   const renderStep = () => {
     switch (currentStep) {
       case RegisterSteps.AccountType:
@@ -34,7 +36,7 @@ export default function RegisterMain() {
       case RegisterSteps.PhoneVerification:
         return <PhoneVerificationForm />;
       case RegisterSteps.PersonalDetails:
-        return <PersonalDetailsForm />;
+        return <PersonalDetailsForm forceComplete={forceCompleteProfile} />;
       case RegisterSteps.Education:
         return <EducationForm />;
       case RegisterSteps.Experience:

@@ -28,6 +28,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { TabParamList } from '../navigation/navigation';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { clearAllTokens } from '../utils/storage';
 
 type HomeScreenNavigationProp = BottomTabNavigationProp<
   TabParamList,
@@ -522,6 +523,8 @@ const HomeScreen: React.FC = () => {
   const fetchUserDetails = async () => {
     try {
       const response = await getUserDetails();
+
+      console.log('response', response)
       dispatch(
         setUserDetails({
           ...response,
@@ -561,7 +564,16 @@ const HomeScreen: React.FC = () => {
             ],
         }),
       );
-    } catch (e: any) {
+    } catch (error) {
+      const logout = async () => {
+        await clearAllTokens();
+        navigation.reset({
+          index: 0,
+          // @ts-ignore
+          routes: [{ name: 'Login' }],
+        });
+      }
+      logout();
       Toast.show({
         type: 'error',
         text1: 'Failed',

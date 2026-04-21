@@ -5,9 +5,32 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RootStackParamList } from '../navigation/navigation';
 import { getAccessToken } from '../utils/storage';
+import useUsersService from '../services/user';
+import { useDispatch, useSelector } from 'react-redux';
+import { RootState } from '../store';
+import {
+  setCurrentStep,
+  setForceCompleteProfile,
+  setUpdateAppUser,
+  setUserDetails,
+} from '../store/user/user.actions';
+import { RegisterSteps } from '../store/user/user.types';
 
 export default function SplashComponent() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { getUserDetails } = useUsersService();
+  const dispatch = useDispatch();
+  const { user } = useSelector((state: RootState) => state.user);
+
+  const isProfileComplete = (d: any): boolean => {
+    const fullName = d?.fullName?.trim?.() ?? '';
+    const parts = fullName.split(' ').filter(Boolean);
+    const firstName = parts?.[0]?.trim?.() ?? '';
+    const lastName = parts?.slice?.(1)?.join?.(' ')?.trim?.() ?? '';
+    const email = d?.email?.trim?.() ?? '';
+    const image = d?.profileImage?.trim?.() ?? '';
+    return !!(firstName && lastName && email && image);
+  };
 
   useEffect(() => {
     const checkFirstTimeUser = async () => {
@@ -23,7 +46,40 @@ export default function SplashComponent() {
           const token = await getAccessToken();
 
           if (token?.trim()) {
-            navigation.replace('MainTabs', { screen: 'HomeTab' });
+            try {
+              const details = await getUserDetails();
+              dispatch(setUserDetails(details));
+
+              const fullName = details?.fullName?.trim?.() ?? '';
+              const parts = fullName.split(' ').filter(Boolean);
+              const firstName = parts?.[0] ?? '';
+              const lastName = parts?.slice?.(1)?.join?.(' ') ?? '';
+
+              dispatch(
+                setUpdateAppUser({
+                  ...user,
+                  firstName: user?.firstName?.trim?.()?.length ? user.firstName : firstName,
+                  lastName: user?.lastName?.trim?.()?.length ? user.lastName : lastName,
+                  email: user?.email?.trim?.()?.length ? user.email : (details?.email?.trim?.() ?? ''),
+                  image: user?.image?.trim?.()?.length
+                    ? user.image
+                    : (details?.profileImage?.trim?.() ?? ''),
+                }),
+              );
+
+              if (!isProfileComplete(details)) {
+                dispatch(setForceCompleteProfile(true));
+                dispatch(setCurrentStep(RegisterSteps.PersonalDetails));
+                navigation.replace('Register');
+                return;
+              }
+
+              dispatch(setForceCompleteProfile(false));
+              navigation.replace('MainTabs', { screen: 'HomeTab' });
+            } catch {
+              // If token exists but profile fetch fails, fall back to tabs.
+              navigation.replace('MainTabs', { screen: 'HomeTab' });
+            }
           } else {
             navigation.replace('Login');
           }
@@ -37,7 +93,7 @@ export default function SplashComponent() {
     const timer = setTimeout(checkFirstTimeUser, 2000); // keep splash for 2s
 
     return () => clearTimeout(timer);
-  }, [navigation]);
+  }, [dispatch, getUserDetails, navigation, user]);
 
   return (
     <View className="flex-1 items-center justify-center bg-[#5B2EC4]">

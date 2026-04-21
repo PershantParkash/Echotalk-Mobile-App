@@ -43,3 +43,8 @@ export const clearUser = () => ({
 export const resetUserDetails = () => ({
   type: Types.RESET_USER_DETAILS,
 });
+
+export const setForceCompleteProfile = (payload: boolean) => ({
+  type: Types.SET_FORCE_COMPLETE_PROFILE,
+  payload,
+});

@@ -10,11 +10,13 @@ import {
   ScrollView,
   Image,
   PermissionsAndroid,
+  StyleSheet,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import {
   setCurrentStep,
+  setForceCompleteProfile,
   setUpdateAppUser,
 } from '../../store/user/user.actions';
 import { RegisterSteps, UserType } from '../../store/user/user.types';
@@ -25,11 +27,24 @@ import Feather from 'react-native-vector-icons/Feather';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/navigation';
 import { useNavigation } from '@react-navigation/native';
+import useS3Upload from '../../hooks/useS3Upload';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MainTabs'>;
 
-const PersonalDetails = () => {
+type PersonalDetailsProps = {
+  /** When true, user must complete profile; disable back navigation to earlier steps. */
+  forceComplete?: boolean;
+};
+
+const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [pendingProfileImage, setPendingProfileImage] = useState<{
+    uri: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number | null;
+  } | null>(null);
   const [errors, setErrors] = useState<{
     firstName?: string;
     lastName?: string;
@@ -41,8 +56,57 @@ const PersonalDetails = () => {
   const dispatch = useDispatch();
   const { updateUser } = useUsersService();
   const navigation = useNavigation<NavigationProp>();
+  const { uploadImageFromUri } = useS3Upload();
+
+  const ensureAndroidGalleryPermission = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return true;
+    try {
+      const perms = PermissionsAndroid?.PERMISSIONS;
+      const readMediaImages = perms?.READ_MEDIA_IMAGES as unknown as
+        | string
+        | undefined;
+      const readExternalStorage = perms?.READ_EXTERNAL_STORAGE as unknown as
+        | string
+        | undefined;
+
+      // Android 13+ uses READ_MEDIA_IMAGES, older uses READ_EXTERNAL_STORAGE.
+      // Some RN versions don't expose READ_MEDIA_IMAGES; in that case we fall back,
+      // and if nothing is available we don't block the picker.
+      const permission =
+        Platform.Version >= 33
+          ? readMediaImages ?? readExternalStorage
+          : readExternalStorage ?? readMediaImages;
+
+      if (!permission?.length) return true;
+
+      const has = await PermissionsAndroid.check(permission as any);
+      if (has) return true;
+
+      const status = await PermissionsAndroid.request(permission as any);
+      // Note: Android may return RESULTS.GRANTED / DENIED / NEVER_ASK_AGAIN.
+      // Some OEM builds (and iOS terminology) may surface 'limited' style values;
+      // treat any non-denied truthy status conservatively.
+      if (status === PermissionsAndroid.RESULTS.GRANTED) return true;
+      if (status === PermissionsAndroid.RESULTS.DENIED) return false;
+      if (status === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) return false;
+      return !!status;
+    } catch {
+      return false;
+    }
+  };
+
   const handleImagePick = async () => {
     try {
+      const ok = await ensureAndroidGalleryPermission();
+      if (!ok) {
+        Toast.show({
+          type: 'error',
+          text1: 'Permission required',
+          text2: 'Please allow photo access to upload a profile image.',
+        });
+        return;
+      }
+
       const image = await ImagePicker.openPicker({
         width: 400,
         height: 400,
@@ -52,31 +116,36 @@ const PersonalDetails = () => {
         mediaType: 'photo',
       });
 
-      Toast.show({
-        type: 'info',
-        text1: 'Uploading...',
-        text2: 'Please wait while we upload your image.',
-      });
+      const localUri = image?.path?.trim?.() ?? '';
+      if (!localUri?.length) {
+        throw new Error('Could not read selected image path.');
+      }
 
-      // TODO: Replace with your actual upload logic
-      // const uploadedUrl = await uploadToS3(image);
-      
-      dispatch(setUpdateAppUser({ ...user, image: image.path }));
-      
-      Toast.show({
-        type: 'success',
-        text1: 'Image Selected',
-        text2: 'Profile image uploaded successfully.',
+      // Show immediate preview; upload happens when user presses Continue.
+      setErrors(prev => ({ ...prev, profileImage: undefined }));
+      setPendingProfileImage({
+        uri: localUri,
+        fileName:
+          image?.filename?.trim?.() ??
+          image?.path?.split?.('/')?.pop?.() ??
+          'profile.jpg',
+        mimeType: image?.mime?.trim?.() ?? 'image/jpeg',
+        fileSize: typeof image?.size === 'number' ? image.size : null,
       });
     } catch (error: any) {
-      if (error.code !== 'E_PICKER_CANCELLED') {
-        // console.error('ImagePicker Error: ', error);
-        Toast.show({
-          type: 'error',
-          text1: 'Upload Failed',
-          text2: 'Failed to select image.',
-        });
-      }
+      const code = error?.code ?? '';
+      if (code === 'E_PICKER_CANCELLED') return;
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : error?.message?.toString?.() || 'Failed to upload image. Try again.';
+
+      Toast.show({
+        type: 'error',
+        text1: 'Image selection failed',
+        text2: message,
+      });
     }
   };
 
@@ -102,7 +171,8 @@ const PersonalDetails = () => {
       tempErrors.email = 'Enter a valid email address';
     }
 
-    if (!user.image) {
+    const hasImage = !!pendingProfileImage?.uri?.length || !!user.image?.length;
+    if (!hasImage) {
       tempErrors.profileImage = 'Profile image is required';
     }
 
@@ -116,19 +186,47 @@ const PersonalDetails = () => {
     setLoading(true);
 
     try {
+      let profileImageUrl = user.image?.trim?.() ?? '';
+
+      if (pendingProfileImage?.uri?.trim?.()?.length) {
+        setUploadingImage(true);
+        Toast.show({
+          type: 'info',
+          text1: 'Uploading image...',
+          text2: 'Please wait while we upload your profile picture.',
+        });
+
+        profileImageUrl = await uploadImageFromUri({
+          uri: pendingProfileImage.uri,
+          fileName: pendingProfileImage.fileName,
+          mimeType: pendingProfileImage.mimeType,
+          fileSize: pendingProfileImage.fileSize,
+          kind: 'image',
+        });
+
+        dispatch(setUpdateAppUser({ ...user, image: profileImageUrl }));
+        setPendingProfileImage(null);
+      }
+
       const updateUserData = {
         fullName: `${user.firstName} ${user.lastName}`,
         email: user.email,
-        profileImage: user.image || '',
+        profileImage: profileImageUrl || '',
       };
 
-      const updatedUser = await updateUser(updateUserData);
+      await updateUser(updateUserData);
 
       Toast.show({
         type: 'success',
         text1: 'Profile Updated',
         text2: 'Your profile details have been saved successfully.',
       });
+
+      if (forceComplete) {
+        dispatch(setForceCompleteProfile(false));
+        navigation.replace('MainTabs', { screen: 'HomeTab' });
+        return;
+      }
 
       if (user.userType === UserType.Trainer) {
         dispatch(setCurrentStep(RegisterSteps.Education));
@@ -142,11 +240,13 @@ const PersonalDetails = () => {
         text2: error?.message || 'Profile update failed. Please try again.',
       });
     } finally {
+      setUploadingImage(false);
       setLoading(false);
     }
   };
 
   const handleBack = () => {
+    if (forceComplete) return;
     dispatch(setCurrentStep(RegisterSteps.PhoneVerification));
   };
 
@@ -156,22 +256,24 @@ const PersonalDetails = () => {
       className="flex-1 bg-white"
     >
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
         <View className="mt-4 h-12 justify-center">
-          <TouchableOpacity
-            onPress={handleBack}
-            className="absolute top-1/2 -translate-y-1/2 p-3 z-50"
-            activeOpacity={0.7}
-          >
-            <Image
-              source={require('../../assets/Badges Arrow.png')}
-              className="w-10 h-10"
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+          {!forceComplete && (
+            <TouchableOpacity
+              onPress={handleBack}
+              className="absolute top-1/2 -translate-y-1/2 p-3 z-50"
+              activeOpacity={0.7}
+            >
+              <Image
+                source={require('../../assets/Badges Arrow.png')}
+                className="w-10 h-10"
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          )}
 
           <Text className="text-4xl font-semibold text-center">
             Personal Details
@@ -187,6 +289,7 @@ const PersonalDetails = () => {
           <TouchableOpacity
             onPress={handleImagePick}
             activeOpacity={0.7}
+            disabled={uploadingImage || loading}
             className="relative"
           >
             <View
@@ -194,9 +297,9 @@ const PersonalDetails = () => {
                 errors.profileImage ? 'border-2 border-red-500' : ''
               }`}
             >
-              {user.image ? (
+              {pendingProfileImage?.uri?.length || user.image ? (
                 <Image
-                  source={{ uri: user.image }}
+                  source={{ uri: pendingProfileImage?.uri ?? user.image }}
                   className="w-full h-full rounded-full"
                   resizeMode="cover"
                 />
@@ -207,7 +310,11 @@ const PersonalDetails = () => {
 
             {/* Camera Icon */}
             <View className="absolute bottom-0 right-0 bg-[#5B2EC4] w-10 h-10 rounded-full items-center justify-center border-2 border-white">
-              <Feather name="camera" size={20} color="#FFFFFF" />
+              {uploadingImage ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Feather name="camera" size={20} color="#FFFFFF" />
+              )}
             </View>
           </TouchableOpacity>
 
@@ -331,3 +438,7 @@ const PersonalDetails = () => {
 };
 
 export default PersonalDetails;
+
+const styles = StyleSheet.create({
+  scrollContent: { flexGrow: 1 },
+});
