@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Image,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
@@ -26,6 +25,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/navigation';
 import Toast from 'react-native-toast-message';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
 
@@ -61,8 +62,12 @@ const PhoneAndPassword = () => {
       tempErrors.phoneNumber = 'Phone number is required';
     } else if (!/^\d+$/.test(user.phoneNumber)) {
       tempErrors.phoneNumber = 'Invalid phone number (only digits allowed)';
-    } else if (!/^\d{10,15}$/.test(user.phoneNumber)) {
-      tempErrors.phoneNumber = 'Enter a valid phone number';
+    } else {
+      const full = `+${user?.countryCode ?? ''}${user?.phoneNumber ?? ''}`;
+      const pn = parsePhoneNumberFromString(full);
+      if (!pn?.isValid?.()) {
+        tempErrors.phoneNumber = 'Enter a valid phone number for the selected country';
+      }
     }
 
     if (!user.password.trim()) {
@@ -92,7 +97,6 @@ const PhoneAndPassword = () => {
     try {
       const formattedPhone = `+${user?.countryCode ?? ''}${user?.phoneNumber?.replace(/\s/g, '') ?? ''}`;
 
-      // console.log('Checking if phone exists...');
       await checkPhoneNumber(formattedPhone);
       const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
 
@@ -149,12 +153,15 @@ const PhoneAndPassword = () => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
+      <KeyboardAwareScrollView
         contentContainerStyle={{ flexGrow: 1 }}
+        enableOnAndroid
+        extraScrollHeight={20}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View className="mt-4 h-12 justify-center">
           <TouchableOpacity
@@ -185,10 +192,20 @@ const PhoneAndPassword = () => {
             countryCode={user?.countryCode ?? ''}
             phoneNumber={user?.phoneNumber ?? ''}
             onCountryChange={code =>
-              dispatch(setUpdateAppUser({ ...user, countryCode: code }))
+              (() => {
+                dispatch(setUpdateAppUser({ ...user, countryCode: code }));
+                setErrors(prev =>
+                  prev?.phoneNumber ? { ...prev, phoneNumber: undefined } : prev,
+                );
+              })()
             }
             onPhoneChange={text =>
-              dispatch(setUpdateAppUser({ ...user, phoneNumber: text }))
+              (() => {
+                dispatch(setUpdateAppUser({ ...user, phoneNumber: text }));
+                setErrors(prev =>
+                  prev?.phoneNumber ? { ...prev, phoneNumber: undefined } : prev,
+                );
+              })()
             }
             error={errors?.phoneNumber}
             editable={!loading}
@@ -208,9 +225,15 @@ const PhoneAndPassword = () => {
                 } pr-12`}
               placeholder="Password"
               placeholderTextColor="#9CA3AF"
-              value={user.password}
+              value={user?.password ?? ''}
               onChangeText={text =>
-                dispatch(setUpdateAppUser({ ...user, password: text }))
+                (() => {
+                  dispatch(setUpdateAppUser({ ...user, password: text }));
+                  setErrors(prev => {
+                    if (!prev?.password && !prev?.confirmPassword) return prev;
+                    return { ...prev, password: undefined, confirmPassword: undefined };
+                  });
+                })()
               }
               secureTextEntry={!showPassword}
               autoCapitalize="none"
@@ -245,9 +268,16 @@ const PhoneAndPassword = () => {
                 } pr-12`}
               placeholder="Confirm password"
               placeholderTextColor="#9CA3AF"
-              value={user.confirmPassword}
+              value={user?.confirmPassword ?? ''}
               onChangeText={text =>
-                dispatch(setUpdateAppUser({ ...user, confirmPassword: text }))
+                (() => {
+                  dispatch(setUpdateAppUser({ ...user, confirmPassword: text }));
+                  setErrors(prev =>
+                    prev?.confirmPassword
+                      ? { ...prev, confirmPassword: undefined }
+                      : prev,
+                  );
+                })()
               }
               secureTextEntry={!showConfirmPassword}
               autoCapitalize="none"
@@ -297,7 +327,7 @@ const PhoneAndPassword = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 };

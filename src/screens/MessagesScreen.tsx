@@ -34,7 +34,6 @@ interface ChatUser {
   contactName: { name: string } | null;
   isOnline: boolean;
 }
-
 interface LastMessage {
   id: number;
   content: string;
@@ -44,7 +43,6 @@ interface LastMessage {
     fullName: string | null;
   };
 }
-
 interface Chat {
   id: number;
   type: string;
@@ -53,18 +51,15 @@ interface Chat {
   lastMessage: LastMessage | null;
   users: ChatUser[];
 }
-
 interface MessagesScreenProps {
   navigation?: any;
 }
-
 type ContactsPermissionStatus =
   | 'authorized'
   | 'denied'
   | 'limited'
   | 'undefined'
   | 'unavailable';
-
 type PhoneContactItem = {
   recordID: string;
   name: string;
@@ -89,7 +84,6 @@ const findExistingConversation = <T extends { users?: { id?: any }[] | null }>(
 };
 
 const shouldInitiateChatFromContact = (contact: PhoneContactItem): boolean => {
-  console.log('shouldInitiateChatFromContact', contact);
   return Boolean(contact?.userId != null && `${contact?.userId}`?.trim?.() !== '');
 };
 
@@ -129,6 +123,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     []
   );
   const drawerTranslateY = useRef(new Animated.Value(drawerHeight)).current;
+
   const filteredPhoneContacts = (() => {
     const query = contactsSearchQuery?.trim?.()?.toLowerCase?.() ?? '';
     if (!query) return phoneContacts ?? [];
@@ -281,7 +276,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
         currentUserId,
       });
     }
-    // console.log('Selected chat:', chat.id);
   };
 
   const openSelectedChat = (chat: Chat, initialMessages: any[]) => {
@@ -370,7 +364,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   };
 
   const handleInitiateChat = async (contact: PhoneContactItem) => {
-    console.log('handleInitiateChat', contact);
     if (!shouldInitiateChatFromContact(contact)) {
       Toast.show?.({
         type: 'info',
@@ -534,7 +527,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
       setContactsSearchQuery('');
       openContactsDrawer();
     } catch {
-      // console.log('Start chat error:', error);
     }
   };
 
@@ -551,13 +543,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   };
 
   const handleContinueAddContact = async () => {
-    // console.log('Add new contact:', {
-    //   firstName: newContactFirstName?.trim?.(),
-    //   lastName: newContactLastName?.trim?.(),
-    //   countryCode: newContactCountryCode?.trim?.(),
-    //   phoneNumber: newContactPhoneNumber?.trim?.(),
-    //   fullPhoneNumber: `+${newContactCountryCode?.trim?.() ?? ''}${newContactPhoneNumber?.trim?.() ?? ''}`,
-    // });
     const first = newContactFirstName?.trim?.() ?? '';
     const last = newContactLastName?.trim?.() ?? '';
     const ccRaw = newContactCountryCode?.trim?.() ?? '';
@@ -598,7 +583,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1">
       {/* Header */}
       <View className="flex-row justify-between items-center px-6 py-4">
         <View style={styles.headerRow}>
@@ -647,7 +632,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
         {onlineContacts?.length > 0 && (
           <View className="px-6 py-4">
             <Text className="text-2xl font-bold mb-4">Online Contacts</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-2">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-2" >
               {onlineContacts.map((contact) => (
                 <TouchableOpacity
                   key={contact.id}
@@ -662,7 +647,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
                     <View className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
                   </View>
                   <Text className="text-sm mt-2 font-medium" numberOfLines={1}>
-                    {getDisplayName(contact).split(' ')[0]}
+                    {getDisplayName(contact)?.split(' ')[0]}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -733,7 +718,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
         </View>
       </ScrollView>
 
-      <ContactsDrawer
+      {isContactsDrawerVisible ? <ContactsDrawer
         isVisible={isContactsDrawerVisible}
         onClose={closeContactsDrawer}
         drawerHeight={drawerHeight}
@@ -746,9 +731,9 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
         filteredPhoneContacts={filteredPhoneContacts}
         onPressChatContact={handleInitiateChat}
         isInitiatingChat={isInitiatingChat}
-      />
+      /> : null}
 
-      <NewContactModal
+      {isAddContactModalVisible ? <NewContactModal
         isAddContactModalVisible={isAddContactModalVisible}
         closeAddContactModal={closeAddContactModal}
         firstName={newContactFirstName}
@@ -760,7 +745,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
         phoneNumber={newContactPhoneNumber}
         setPhoneNumber={setNewContactPhoneNumber}
         onContinue={handleContinueAddContact}
-      />
+      /> : null}
     </SafeAreaView>
   );
 };

@@ -7,8 +7,9 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  // ScrollView,
   ActivityIndicator,
+  // StyleSheet,
 } from 'react-native';
 import useAuthService from '../../services/auth';
 import Toast from 'react-native-toast-message';
@@ -28,13 +29,15 @@ import {
   setUserDetails,
 } from '../../store/user/user.actions';
 import { RegisterSteps } from '../../store/user/user.types';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 type LoginScreenProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export default function LoginComponent() {
   const [countryCode, setCountryCode] = useState('92');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState('pass123');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{
     phoneNumber?: string;
@@ -64,8 +67,14 @@ export default function LoginComponent() {
       tempErrors.phoneNumber = 'Please select a country';
     } else if (!phoneNumber?.trim()) {
       tempErrors.phoneNumber = 'Phone number is required';
-    } else if (!/^\d{10,15}$/.test(phoneNumber)) {
-      tempErrors.phoneNumber = 'Enter a valid phone number (10-15 digits)';
+    } else if (!/^\d+$/.test(phoneNumber)) {
+      tempErrors.phoneNumber = 'Invalid phone number (only digits allowed)';
+    } else {
+      const full = `+${countryCode ?? ''}${phoneNumber ?? ''}`;
+      const pn = parsePhoneNumberFromString(full);
+      if (!pn?.isValid?.()) {
+        tempErrors.phoneNumber = 'Enter a valid phone number for the selected country';
+      }
     }
 
     if (!password) {
@@ -83,7 +92,6 @@ export default function LoginComponent() {
         phoneNumber: `+${countryCode}${phoneNumber}`,
         password,
       });
-      console.log('response', response)
       if (response) {
         await saveTokens(response.accessToken, response.refreshToken);
 
@@ -146,11 +154,13 @@ export default function LoginComponent() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1"
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
+      <KeyboardAwareScrollView
         contentContainerStyle={{ flexGrow: 1 }}
+        enableOnAndroid
+        extraScrollHeight={20}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -282,7 +292,7 @@ export default function LoginComponent() {
             </View>
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

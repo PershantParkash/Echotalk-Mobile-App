@@ -437,7 +437,6 @@ const HomeScreen: React.FC = () => {
         'DESC',
       );
 
-      // console.log('Course API Response:', response);
 
       // Handle different possible response structures
       let courseData: Course[] = [];
@@ -457,7 +456,6 @@ const HomeScreen: React.FC = () => {
         }
       }
 
-      // console.log('Parsed course data:', courseData);
 
       if (courseData.length > 0) {
         setCourses(courseData);
@@ -488,7 +486,6 @@ const HomeScreen: React.FC = () => {
         '',
       );
 
-      // console.log('Service API Response:', response);
 
       // Handle different possible response structures
       let serviceData: Service[] = [];
@@ -508,7 +505,6 @@ const HomeScreen: React.FC = () => {
         }
       }
 
-      // console.log('Parsed service data:', serviceData);
 
       if (serviceData.length > 0) {
         setServices(serviceData);
@@ -523,8 +519,6 @@ const HomeScreen: React.FC = () => {
   const fetchUserDetails = async () => {
     try {
       const response = await getUserDetails();
-
-      console.log('response', response)
       dispatch(
         setUserDetails({
           ...response,

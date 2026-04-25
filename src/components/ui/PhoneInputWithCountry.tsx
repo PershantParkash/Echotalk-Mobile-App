@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,11 @@ import {
   FlatList,
   Keyboard,
 } from 'react-native';
-import { Country } from 'country-state-city';
+import COUNTRY_LIST from '../../constants/countries.json';
+import { getExampleNumber } from 'libphonenumber-js';
+import examples from 'libphonenumber-js/examples.mobile.json';
+import type { CountryCode } from 'libphonenumber-js';
+
 
 export type CountryOption = {
   name: string;
@@ -17,15 +21,31 @@ export type CountryOption = {
   flag: string;
 };
 
-const COUNTRIES: CountryOption[] = Country.getAllCountries().map(c => ({
-  name: c.name,
-  isoCode: c.isoCode,
-  phonecode: (c.phonecode ?? '').replace(/\D/g, '') || '',
-  flag: c.flag ?? '',
-}));
-
 function normalizeDialCode(code: string): string {
   return code.replace(/\D/g, '') || '';
+}
+
+const maxNationalDigitsByIso = new Map<string, number>();
+
+function getMaxNationalDigits(isoCode?: string | null): number | undefined {
+  const iso = isoCode?.trim?.()?.toUpperCase?.() ?? '';
+  if (!iso) return undefined;
+  const cached = maxNationalDigitsByIso.get(iso);
+  if (typeof cached === 'number') return cached;
+
+  try {
+    const example = getExampleNumber(iso as CountryCode, examples);
+    const national = example?.nationalNumber ?? '';
+    const maxDigits = String(national)?.replace?.(/\D/g, '')?.length ?? 0;
+    if (maxDigits > 0) {
+      maxNationalDigitsByIso.set(iso, maxDigits);
+      return maxDigits;
+    }
+  } catch {
+    // ignore; fallback handled by returning undefined
+  }
+
+  return undefined;
 }
 
 export type PhoneInputWithCountryProps = {
@@ -57,18 +77,30 @@ export function PhoneInputWithCountry({
   const [searchQuery, setSearchQuery] = useState('');
 
   const selectedCountry = countryCode?.trim()
-    ? COUNTRIES.find(
+    ? COUNTRY_LIST.find(
       c =>
         normalizeDialCode(c.phonecode) === normalizeDialCode(countryCode),
     ) ?? null
     : null;
 
+  const maxNationalDigits = useMemo(() => {
+    return getMaxNationalDigits(selectedCountry?.isoCode ?? undefined);
+  }, [selectedCountry?.isoCode]);
+
+  useEffect(() => {
+    if (!maxNationalDigits) return;
+    const cleaned = phoneNumber?.replace?.(/\D/g, '') ?? '';
+    if (cleaned.length > maxNationalDigits) {
+      onPhoneChange(cleaned.slice(0, maxNationalDigits));
+    }
+  }, [maxNationalDigits, onPhoneChange, phoneNumber]);
+
   const filteredCountries = useMemo(() => {
-    if (!searchQuery.trim()) return COUNTRIES;
+    if (!searchQuery.trim()) return COUNTRY_LIST;
     const qRaw = searchQuery.toLowerCase().trim();
     const qDigits = normalizeDialCode(searchQuery);
     const qAlpha = qRaw.replace(/[^a-z]/g, '');
-    return COUNTRIES.filter(
+    return COUNTRY_LIST.filter(
       c =>
         c.name?.toLowerCase().includes(qRaw) ||
         (!!qDigits && normalizeDialCode(c.phonecode).includes(qDigits)) ||
@@ -118,11 +150,15 @@ export function PhoneInputWithCountry({
           placeholderTextColor="#9CA3AF"
           value={phoneNumber}
           onChangeText={text => {
-            const cleaned = text.replace(/\D/g, '');
-            onPhoneChange(cleaned);
+            const cleaned = text?.replace?.(/\D/g, '') ?? '';
+            const limited = maxNationalDigits
+              ? cleaned.slice(0, maxNationalDigits)
+              : cleaned;
+            onPhoneChange(limited);
           }}
           keyboardType="phone-pad"
           editable={editable}
+          maxLength={maxNationalDigits}
           onPress={() => !displayCode && setModalVisible(true)}
         />
       </View>

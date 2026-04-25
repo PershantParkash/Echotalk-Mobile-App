@@ -495,7 +495,6 @@ const CallScreen = () => {
     if (!signAiStreamerRef.current) {
       const streamer = new SignAiFrameStreamer({ debug: true });
       streamer.onServerMessage((msg) => {
-        console.log('====>', msg);
         setSignAiLastMessage(msg);
         setSignAiConnected(streamer.isConnected);
 
@@ -524,7 +523,6 @@ const CallScreen = () => {
                 ?.filter?.((t: any) => t?.label)
               : undefined,
           };
-          console.log('pred', pred)
           setSignAiPrediction(pred);
         }
       });
@@ -572,7 +570,6 @@ const CallScreen = () => {
       label: 'hand-raised',
       onFrameBase64: (base64) => {
         // Push frames to AI WS; server responses will populate the overlay.
-        console.log('base64', base64)
         signAiStreamerRef.current?.sendJpegBase64?.(base64);
       },
     });

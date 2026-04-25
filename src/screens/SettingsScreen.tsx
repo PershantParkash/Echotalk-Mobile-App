@@ -104,9 +104,15 @@ const SettingsScreen = () => {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigation.goBack()}
-        ></TouchableOpacity>
+        >
+          <Image
+            source={require('../assets/left-arrow-black.png')}
+            className="w-[24px] h-[24px]"
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
         <Text className="text-xl font-semibold text-gray-900">Setting</Text>
-        <TouchableOpacity onPress={() => { /* console.log('More options') */ }}>
+        <TouchableOpacity >
           <MoreVertical size={24} color="#1f2937" />
         </TouchableOpacity>
       </View>
@@ -122,19 +128,16 @@ const SettingsScreen = () => {
             <MenuItem
               icon={Lock}
               title="Change Password"
-              onPress={() => { /* console.log('Change Password') */ }}
             />
             <View className="h-px bg-gray-100 ml-16" />
             <MenuItem
               icon={HelpCircle}
               title="FAQ"
-              onPress={() => { /* console.log('FAQ') */ }}
             />
             <View className="h-px bg-gray-100 ml-16" />
             <MenuItem
               icon={Shield}
               title="Privacy & Policy"
-              onPress={() => { /* console.log('Privacy & Policy') */ }}
             />
           </View>
         </View>

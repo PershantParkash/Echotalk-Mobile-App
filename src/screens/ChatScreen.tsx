@@ -198,7 +198,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   // WebSocket connection effect
   // WebSocket connection effect
   useEffect(() => {
-    // console.log('🔌 Setting up WebSocket connection for chat:', chatId);
 
     const initializeSocket = async () => {
       try {
@@ -206,7 +205,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         socketRef.current = socket;
 
         socket.on('connect', () => {
-          // console.log('✅ Mobile chat connected:', socket.id);
           // Join this specific chat room
           socket.emit('joinAllChats', [chatId]);
         });
@@ -251,7 +249,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         });
 
         socket.on('disconnect', () => {
-          // console.log('❌ Socket disconnected');
         });
 
         socket.on('error', (_error: any) => {
@@ -270,7 +267,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
     // Cleanup on unmount
     return () => {
-      // console.log('🔌 Cleaning up socket connection');
       if (socketRef.current) {
         socketRef.current.off('newMessage');
         socketRef.current.off('userRecording');
@@ -653,12 +649,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     const messageContent = newMessage.trim();
 
     if (messageContent === '') {
-      // console.log('Message is empty, not sending');
       return;
     }
 
     if (sending) {
-      // console.log('Already sending a message');
       return;
     }
 

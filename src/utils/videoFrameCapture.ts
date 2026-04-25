@@ -49,12 +49,7 @@ export function startRenderedViewFrameCapture({
       // const elapsedMs = Date.now() - startedAt;
       // const size = base64?.length ?? 0;
 
-      // console.log(`[${label}] frame captured`, { elapsedMs, size });
     } catch (e) {
-      console.log(
-        `[${label}] frame capture failed`,
-        e instanceof Error ? e.message : String(e ?? 'unknown'),
-      );
     } finally {
       inFlight = false;
     }

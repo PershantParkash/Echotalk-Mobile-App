@@ -94,7 +94,6 @@ export class SignAiFrameStreamer {
       });
     }, delay);
 
-    // console.log('[SignAI] scheduling reconnect', { attempt, delay });
   }
 
   async connect(): Promise<void> {
@@ -123,22 +122,17 @@ export class SignAiFrameStreamer {
           }
 
           if (this.debug) {
-            console.log('[SignAI] ws message', payload);
           }
           this.onMessageHandler?.(payload);
         };
 
         ws.onopen = () => {
-          // console.log('[SignAI] WS connected');
           this.reconnectAttempts = 0;
 
           // If we queued a frame while disconnected, flush the latest one.
           if (this.lastQueuedFrameBase64 && ws.readyState === WebSocket.OPEN) {
             try {
               ws.send?.(JSON.stringify({ frame: this.lastQueuedFrameBase64 }));
-              // console.log('[SignAI] flushed queued frame', {
-              //   size: this.lastQueuedFrameBase64?.length ?? 0,
-              // });
             } catch {
               // ignore
             } finally {
@@ -149,11 +143,9 @@ export class SignAiFrameStreamer {
         };
         ws.onerror = () => {
           // Do not reject here; some platforms emit error then close.
-          // console.log('[SignAI] WS error');
           this.scheduleReconnect();
         };
         ws.onclose = () => {
-          // console.log('[SignAI] WS closed');
           // If this socket is our current one, clear it.
           if (this.ws === ws) {
             this.ws = null;
@@ -259,8 +251,6 @@ export class SignAiFrameStreamer {
       this.lastQueuedFrameBase64 = base64;
       this.scheduleReconnect();
     }
-
-    // console.log('[SignAI] sent frame', { size: base64?.length ?? 0 });
   }
 
   /**

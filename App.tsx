@@ -85,10 +85,10 @@ function AppWithCallSocket() {
   }, []);
 
   useEffect(() => {
-    refreshAuthTokenPresence().catch(() => {});
+    refreshAuthTokenPresence().catch(() => { });
     const onAppState = (state: AppStateStatus) => {
       if (state === 'active') {
-        refreshAuthTokenPresence().catch(() => {});
+        refreshAuthTokenPresence().catch(() => { });
       }
     };
     const sub = AppState.addEventListener('change', onAppState);
@@ -99,7 +99,7 @@ function AppWithCallSocket() {
 
   useEffect(() => {
     if (userId != null) {
-      refreshAuthTokenPresence().catch(() => {});
+      refreshAuthTokenPresence().catch(() => { });
     }
   }, [userId, refreshAuthTokenPresence]);
 
@@ -109,7 +109,7 @@ function AppWithCallSocket() {
       return;
     }
     const id = setInterval(() => {
-      refreshAuthTokenPresence().catch(() => {});
+      refreshAuthTokenPresence().catch(() => { });
     }, 1000);
     return () => clearInterval(id);
   }, [hasAuthToken, refreshAuthTokenPresence]);
@@ -125,9 +125,7 @@ function AppWithCallSocket() {
     hadAuthTokenRef.current = true;
 
     const onReceivingCall = (payload: IncomingCallPayload) => {
-      console.log('Incomming call', payload);
       if (!isValidIncomingPayload(payload)) {
-        console.log('Incomming call ignored: invalid payload (missing from/to)');
         return;
       }
       setIncomingCall(payload);
@@ -174,10 +172,8 @@ function AppWithCallSocket() {
         }
         attachedSocket = instance;
         if (instance.connected) {
-          console.log('[CallSocket] ready (already connected)');
         } else {
           instance.once?.('connect', () => {
-            console.log('[CallSocket] connected — incoming calls enabled');
           });
         }
         instance.on?.('receivingCall', onReceivingCall);
@@ -208,7 +204,6 @@ function AppWithCallSocket() {
     let cleanup: (() => void) | undefined;
     try {
       cleanup = setupIncomingCallPush(payload => {
-        console.log('Incomming call', payload);
         if (isValidIncomingPayload(payload)) {
           setIncomingCall(payload);
         }
