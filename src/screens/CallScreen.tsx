@@ -35,9 +35,11 @@ import { generateAgoraTokenForCall } from '../utils/agora-token';
 import { incomingCallToAnswerPayload } from '../types/incomingCall';
 import { startRenderedViewFrameCapture } from '../utils/videoFrameCapture';
 import { SignAiFrameStreamer } from '../utils/ai/signAiFrameStreamer';
-import SignAiPredictionOverlay, {
-  type SignAiPrediction,
-} from '../components/SignAiPredictionOverlay';
+import { type SignAiPrediction } from '../components/SignAiPredictionOverlay';
+import DetrPredictionOverlay, {
+  type DetrDetection,
+  type DetrPrediction,
+} from '../components/DetrPredictionOverlay';
 
 type CallNav = NativeStackNavigationProp<RootStackParamList, 'CallScreen'>;
 type CallRoute = RouteProp<RootStackParamList, 'CallScreen'>;
@@ -75,11 +77,15 @@ const CallScreen = () => {
   const [callSocketReady, setCallSocketReady] = useState(false);
   const answerEmittedRef = useRef(false);
   const localVideoCaptureRef = useRef<any | null>(null);
+  const remoteVideoCaptureRef = useRef<any | null>(null);
   const stopFrameCaptureRef = useRef<null | (() => void)>(null);
   const signAiStreamerRef = useRef<SignAiFrameStreamer | null>(null);
+  const signAiIsProcessingRef = useRef(false);
   const [_signAiLastMessage, setSignAiLastMessage] = useState<unknown>(null);
   const [signAiConnected, setSignAiConnected] = useState(false);
-  const [signAiPrediction, setSignAiPrediction] = useState<SignAiPrediction | null>(null);
+  const [_signAiPrediction, setSignAiPrediction] = useState<SignAiPrediction | null>(null);
+  const [detrPrediction, setDetrPrediction] = useState<DetrPrediction | null>(null);
+  const [controlsBarHeight, setControlsBarHeight] = useState(0);
 
   useEffect(() => {
     callTypeRef.current = callType;
@@ -109,21 +115,80 @@ const CallScreen = () => {
     }
   };
 
+  const resetLocalCallState = useCallback(() => {
+    // Stop any frame capture loops (view-shot timer).
+    stopFrameCaptureRef.current?.();
+    stopFrameCaptureRef.current = null;
+
+    // Reset SignAI stream (socket) + predictions.
+    signAiIsProcessingRef.current = false;
+    signAiStreamerRef.current?.disconnect?.();
+    setSignAiConnected(false);
+    setSignAiLastMessage(null);
+    setSignAiPrediction(null);
+    setDetrPrediction(null);
+
+    // Reset UI toggles.
+    setMuted(false);
+    setVideoOn(false);
+    setHandRaised(false);
+
+    // Reset call metadata.
+    peerIdsRef.current = {};
+    setCalleeName('');
+    setRoomName('');
+    setCallType('audio');
+    setCallLogId(null);
+    setStartTime(null);
+
+    // Local flags.
+    answerEmittedRef.current = false;
+  }, []);
+
   const endLocally = useCallback(async () => {
     await cleanupAgora();
     setCallStatus('ended');
+    resetLocalCallState();
     navigation?.goBack?.();
-  }, [navigation]);
+  }, [navigation, resetLocalCallState]);
 
   useEffect(() => {
-    CallSocketSingleton.connect()
-      .then(s => {
-        socketRef.current = s;
-        setCallSocketReady(true);
-      })
-      .catch(() => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connectWithRetry = async () => {
+      const delaysMs = [0, 800, 1600, 3200];
+      for (let i = 0; i < delaysMs.length; i++) {
+        const delay = delaysMs[i] ?? 0;
+        if (delay > 0) {
+          await new Promise<void>((r) => {
+            retryTimer = setTimeout(() => r(), delay);
+          });
+        }
+        if (cancelled) return;
+        try {
+          const s = await CallSocketSingleton.connect();
+          if (cancelled) return;
+          socketRef.current = s;
+          setCallSocketReady(true);
+          return;
+        } catch {
+          // retry
+        }
+      }
+      if (!cancelled) {
         Alert.alert('Call error', 'Unable to connect call socket.');
-      });
+      }
+    };
+
+    connectWithRetry();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+      }
+    };
   }, []);
 
   /** Hydrate from navigation when answering from IncomingCallModal / push. */
@@ -132,7 +197,9 @@ const CallScreen = () => {
     if (!p?.from || !p?.to) {
       return;
     }
-    setRoomName(String(p?.roomName ?? ''));
+    if (p?.roomName != null) {
+      setRoomName(String(p.roomName));
+    }
     setCallLogId(p?.callLogId ?? null);
     const st = p?.startTime;
     setStartTime(
@@ -143,13 +210,14 @@ const CallScreen = () => {
           : null,
     );
     setCallType(p?.callType === 'video' ? 'video' : 'audio');
-    setCalleeName(p?.callerName ?? '');
-    setCallStatus('receiving');
+    const isAnsweringIncoming = route.params?.answerIncoming === true;
+    setCalleeName(isAnsweringIncoming ? (p?.callerName ?? '') : (p?.calleeName ?? ''));
+    setCallStatus(isAnsweringIncoming ? 'receiving' : 'calling');
     peerIdsRef.current = {
       from: String(p.from),
       to: String(p.to),
     };
-  }, [route.params?.callPayload]);
+  }, [route.params?.answerIncoming, route.params?.callPayload]);
 
   /** Emit answer once the call socket is connected (after modal Answer). */
   useEffect(() => {
@@ -182,11 +250,13 @@ const CallScreen = () => {
     }
 
     const handleCallInitiated = (data: any) => {
-      setRoomName(data?.roomName ?? roomName);
-      setCallLogId(data?.callLogId ?? null);
-      setStartTime(data?.startTime ?? null);
-      setCallType((data?.callType as 'audio' | 'video') ?? 'audio');
-      setCalleeName(data?.calleeName ?? data?.callerName ?? '');
+      if (data?.roomName != null) setRoomName(String(data.roomName));
+      if (data?.callLogId != null) setCallLogId(data.callLogId ?? null);
+      if (data?.startTime != null) setStartTime(data.startTime ?? null);
+      if (data?.callType != null) setCallType((data?.callType as 'audio' | 'video') ?? 'audio');
+      if (data?.calleeName != null || data?.callerName != null) {
+        setCalleeName(data?.calleeName ?? data?.callerName ?? '');
+      }
       setCallStatus('calling');
       peerIdsRef.current = {
         from: data?.from != null ? String(data.from) : peerIdsRef.current.from,
@@ -195,11 +265,11 @@ const CallScreen = () => {
     };
 
     const handleReceivingCall = (data: any) => {
-      setRoomName(data?.roomName ?? roomName);
-      setCallLogId(data?.callLogId ?? null);
-      setStartTime(data?.startTime ?? null);
-      setCallType((data?.callType as 'audio' | 'video') ?? 'audio');
-      setCalleeName(data?.callerName ?? '');
+      if (data?.roomName != null) setRoomName(String(data.roomName));
+      if (data?.callLogId != null) setCallLogId(data.callLogId ?? null);
+      if (data?.startTime != null) setStartTime(data.startTime ?? null);
+      if (data?.callType != null) setCallType((data?.callType as 'audio' | 'video') ?? 'audio');
+      if (data?.callerName != null) setCalleeName(String(data.callerName ?? ''));
       setCallStatus('receiving');
       peerIdsRef.current = {
         from: data?.from != null ? String(data.from) : peerIdsRef.current.from,
@@ -208,9 +278,9 @@ const CallScreen = () => {
     };
 
     const handleCallAccepted = async (data: any) => {
-      setRoomName(data?.roomName ?? roomName);
-      setCallLogId(data?.callLogId ?? null);
-      setStartTime(data?.startTime ?? null);
+      if (data?.roomName != null) setRoomName(String(data.roomName));
+      if (data?.callLogId != null) setCallLogId(data.callLogId ?? null);
+      if (data?.startTime != null) setStartTime(data.startTime ?? null);
       setCallStatus('active');
       setRemoteUid(null);
       peerIdsRef.current = {
@@ -387,13 +457,60 @@ const CallScreen = () => {
 
   const emitEndCall = () => {
     const socket = socketRef.current;
-    if (!socket || !roomName || !callLogId || !startTime || !userDetails?.id) {
+    if (!socket || !roomName || !startTime || !userDetails?.id) {
+      return;
+    }
+
+    const selfId = String(userDetails.id);
+    const fromId = peerIdsRef.current.from;
+    const toId = peerIdsRef.current.to;
+    const otherUserId =
+      fromId === selfId
+        ? toId
+        : toId === selfId
+          ? fromId
+          : undefined;
+
+    // Use callLogId only if it exists (server may emit null initially).
+    const safeCallLogId = callLogId ?? null;
+
+    // If the call is not active yet, this is a "cancel" (outgoing) or "reject" (incoming).
+    if (callStatus !== 'active') {
+      if (callStatus === 'receiving') {
+        socket.emit?.('rejectCall', {
+          from: fromId ?? selfId,
+          to: toId ?? otherUserId ?? '',
+          callerName: '',
+          callerProfileImage: '',
+          calleeProfileImage: userDetails.profileImage ?? '',
+          calleeName: userDetails.fullName ?? '',
+          roomName,
+          callLogId: Number(safeCallLogId ?? 0),
+          startTime: startTime ? new Date(startTime) : new Date(),
+          callType,
+        });
+        return;
+      }
+
+      // Default: outgoing "cancel".
+      socket.emit?.('cancelCall', {
+        from: selfId,
+        to: otherUserId ?? '',
+        callerName: userDetails.fullName ?? '',
+        callerProfileImage: userDetails.profileImage ?? '',
+        calleeProfileImage: '',
+        calleeName,
+        roomName,
+        startTime: startTime ? new Date(startTime) : new Date(),
+        callLogId: safeCallLogId,
+        callType,
+      });
       return;
     }
 
     socket.emit?.('endCall', {
-      from: String(userDetails.id),
-      to: '',
+      from: selfId,
+      to: otherUserId ?? '',
       callerName: userDetails.fullName ?? '',
       callerProfileImage: userDetails.profileImage ?? '',
       calleeProfileImage: '',
@@ -493,24 +610,47 @@ const CallScreen = () => {
 
   useEffect(() => {
     if (!signAiStreamerRef.current) {
-      const streamer = new SignAiFrameStreamer({ debug: true });
+      const streamer = new SignAiFrameStreamer({
+        debug: true,
+        // CRITICAL: target 2–3 FPS; never exceed 5 FPS.
+        minIntervalMs: 300,
+      });
       streamer.onServerMessage((msg) => {
+        // Backpressure: only allow sending the next frame after we receive *any* server response.
+        signAiIsProcessingRef.current = false;
         setSignAiLastMessage(msg);
         setSignAiConnected(streamer.isConnected);
 
+        // Updated DETR model (web reference): server returns an array of detections:
+        // [{ class: string, confidence: number }, ...]
+        if (Array.isArray(msg)) {
+          const detections: DetrDetection[] = (msg ?? [])
+            ?.map?.((d: any) => ({
+              class: typeof d?.class === 'string' ? d.class : '',
+              confidence: typeof d?.confidence === 'number' ? d.confidence : Number(d?.confidence ?? 0),
+            }))
+            ?.filter?.((d: DetrDetection) => !!d?.class && Number.isFinite(d?.confidence));
+
+          const sorted = (detections ?? [])?.slice?.().sort?.((a, b) => (b?.confidence ?? 0) - (a?.confidence ?? 0));
+          const top = sorted?.[0];
+          setDetrPrediction({
+            top: top ? { class: top.class, confidence: top.confidence } : undefined,
+            detections: sorted,
+          });
+          return;
+        }
+
+        // Backward-compatible: keep old Sign AI payload parsing if server sends object payloads.
         const obj = msg && typeof msg === 'object' ? (msg as any) : null;
-        const payload =
-          obj?.type === 'prediction' && obj != null ? obj : obj;
+        const payload = obj?.type === 'prediction' && obj != null ? obj : obj;
 
         if (payload && typeof payload === 'object') {
           const pred: SignAiPrediction = {
             current: typeof payload?.current === 'string' ? payload.current : undefined,
-            confidence:
-              typeof payload?.confidence === 'number' ? payload.confidence : undefined,
+            confidence: typeof payload?.confidence === 'number' ? payload.confidence : undefined,
             sentence_text:
               typeof payload?.sentence_text === 'string' ? payload.sentence_text : undefined,
-            frames_seen:
-              typeof payload?.frames_seen === 'number' ? payload.frames_seen : undefined,
+            frames_seen: typeof payload?.frames_seen === 'number' ? payload.frames_seen : undefined,
             frames_needed:
               typeof payload?.frames_needed === 'number' ? payload.frames_needed : undefined,
             ready: typeof payload?.ready === 'boolean' ? payload.ready : undefined,
@@ -549,11 +689,14 @@ const CallScreen = () => {
     setSignAiConnected(false);
     setSignAiLastMessage(null);
     setSignAiPrediction(null);
+    setDetrPrediction(null);
   }, [handRaised]);
 
   useEffect(() => {
     // Capture frames only while "hand raised" is active.
-    if (!(handRaised && showVideoLayout && videoOn)) {
+    // Correct flow: when a user enables sign-language mode, they should see the OTHER user's signs.
+    // So we capture frames from the remote video view (not the local preview).
+    if (!(handRaised && showVideoLayout && remoteUid != null)) {
       stopFrameCaptureRef.current?.();
       stopFrameCaptureRef.current = null;
       return;
@@ -561,16 +704,23 @@ const CallScreen = () => {
 
     stopFrameCaptureRef.current?.();
     stopFrameCaptureRef.current = startRenderedViewFrameCapture({
-      targetRef: localVideoCaptureRef,
-      // CRITICAL: stream ~8-9 fps
-      intervalMs: 120,
+      targetRef: remoteVideoCaptureRef,
+      // CRITICAL: target 2–3 FPS; do not exceed 5 FPS.
+      intervalMs: 300,
+      // JPEG compression requirements for SignAI payloads.
+      jpegQuality: 0.6,
       // Fail-safe: react-native-view-shot can occasionally hang a snapshot call.
       // If that happens, we want to recover and keep sending frames.
       captureTimeoutMs: 1200,
       label: 'hand-raised',
       onFrameBase64: (base64) => {
-        // Push frames to AI WS; server responses will populate the overlay.
-        signAiStreamerRef.current?.sendJpegBase64?.(base64);
+        // Controlled streaming (no flooding):
+        // Only send next frame after server response clears `signAiIsProcessingRef`.
+        const streamer = signAiStreamerRef.current;
+        if (!streamer?.isConnected) return;
+        if (signAiIsProcessingRef.current) return;
+        signAiIsProcessingRef.current = true;
+        streamer.sendJpegBase64?.(base64);
       },
     });
 
@@ -578,25 +728,43 @@ const CallScreen = () => {
       stopFrameCaptureRef.current?.();
       stopFrameCaptureRef.current = null;
     };
-  }, [handRaised, showVideoLayout, videoOn]);
+  }, [handRaised, showVideoLayout, remoteUid]);
 
   return (
     <SafeAreaView className="flex-1 bg-neutral-900" edges={['top']}>
       {showVideoLayout ? (
         <View className="flex-1 bg-black">
-          <SignAiPredictionOverlay
+          <DetrPredictionOverlay
             visible={handRaised}
             connected={signAiConnected}
-            prediction={signAiPrediction}
+            prediction={detrPrediction}
+            signerName={calleeName?.trim?.() || 'Peer'}
+            bottomOffsetPx={controlsBarHeight + 50}
           />
           {remoteUid != null ? (
-            <RtcSurfaceView
+            <View
+              ref={remoteVideoCaptureRef}
+              collapsable={false}
               style={styles.remoteVideo}
-              canvas={{
-                uid: remoteUid,
-                renderMode: RenderModeType.RenderModeHidden,
-              }}
-            />
+            >
+              {Platform.OS === 'android' ? (
+                <RtcTextureView
+                  style={styles.remoteVideo}
+                  canvas={{
+                    uid: remoteUid,
+                    renderMode: RenderModeType.RenderModeHidden,
+                  }}
+                />
+              ) : (
+                <RtcSurfaceView
+                  style={styles.remoteVideo}
+                  canvas={{
+                    uid: remoteUid,
+                    renderMode: RenderModeType.RenderModeHidden,
+                  }}
+                />
+              )}
+            </View>
           ) : (
             <View className="flex-1 items-center justify-center bg-neutral-900 px-6">
               <Text className="text-center text-base text-neutral-400">
@@ -663,6 +831,12 @@ const CallScreen = () => {
         <View
           style={styles.floatingBar}
           className="flex flex-row items-center justify-between"
+          onLayout={(e) => {
+            const h = e?.nativeEvent?.layout?.height ?? 0;
+            if (Number.isFinite(h) && h > 0 && h !== controlsBarHeight) {
+              setControlsBarHeight(h);
+            }
+          }}
         >
           {/* Sign Language */}
           <TouchableOpacity

@@ -1120,7 +1120,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     try {
       // Check if the user has the required audio permissions
       const hasAudio = await ensureAudioPermission();
-
       // If the user doesn't have the required audio permissions, show an alert and return
       if (!hasAudio) {
         Alert.alert('Permission', 'Microphone permission is required for calls.');
@@ -1140,6 +1139,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       const socket = await CallSocketSingleton.connect();
       const fromId = currentUserId;
       const toId = otherUser.id;
+      if (!fromId || !toId) {
+        Alert.alert('Call error', 'Unable to start call: missing user info.');
+        return;
+      }
       const roomName = generateRoomName(fromId, toId);
       const callerName = userDetails.fullName ?? '';
       const callerProfileImage = userDetails.profileImage ?? '';
@@ -1159,7 +1162,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         callType,
       });
 
-      navigation?.navigate?.('CallScreen', {});
+      navigation?.navigate?.('CallScreen', {
+        callPayload: {
+          from: String(fromId ?? ''),
+          to: String(toId ?? ''),
+          callerName,
+          callerProfileImage,
+          calleeName,
+          calleeProfileImage,
+          roomName,
+          startTime: new Date(),
+          callLogId: null,
+          callType,
+        },
+        answerIncoming: false,
+      });
     } catch {
       Alert.alert(
         'Call error',

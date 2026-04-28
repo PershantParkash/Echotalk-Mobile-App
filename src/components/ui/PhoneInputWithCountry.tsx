@@ -49,9 +49,10 @@ function getMaxNationalDigits(isoCode?: string | null): number | undefined {
 }
 
 export type PhoneInputWithCountryProps = {
+  countryIsoCode?: string;
   countryCode: string;
   phoneNumber: string;
-  onCountryChange: (dialCode: string) => void;
+  onCountryChange: (dialCode: string, isoCode?: string) => void;
   onPhoneChange: (nationalNumber: string) => void;
   error?: string;
   editable?: boolean;
@@ -62,6 +63,7 @@ export type PhoneInputWithCountryProps = {
 };
 
 export function PhoneInputWithCountry({
+  countryIsoCode,
   countryCode,
   phoneNumber,
   onCountryChange,
@@ -76,12 +78,19 @@ export function PhoneInputWithCountry({
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const selectedCountry = countryCode?.trim()
-    ? COUNTRY_LIST.find(
-      c =>
-        normalizeDialCode(c.phonecode) === normalizeDialCode(countryCode),
-    ) ?? null
-    : null;
+  const selectedCountry = useMemo(() => {
+    const iso = countryIsoCode?.trim?.()?.toUpperCase?.() ?? '';
+    if (iso) {
+      return COUNTRY_LIST.find(c => (c.isoCode ?? '').toUpperCase() === iso) ?? null;
+    }
+    const dial = countryCode?.trim?.() ?? '';
+    if (!dial) return null;
+    return (
+      COUNTRY_LIST.find(
+        c => normalizeDialCode(c.phonecode) === normalizeDialCode(dial),
+      ) ?? null
+    );
+  }, [countryCode, countryIsoCode]);
 
   const maxNationalDigits = useMemo(() => {
     return getMaxNationalDigits(selectedCountry?.isoCode ?? undefined);
@@ -109,7 +118,10 @@ export function PhoneInputWithCountry({
   }, [searchQuery]);
 
   const handleSelectCountry = (country: CountryOption) => {
-    onCountryChange(normalizeDialCode(country.phonecode) || country.phonecode);
+    onCountryChange(
+      normalizeDialCode(country.phonecode) || country.phonecode,
+      country.isoCode,
+    );
     setModalVisible(false);
     setSearchQuery('');
     Keyboard.dismiss();

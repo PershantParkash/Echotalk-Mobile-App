@@ -15,6 +15,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import useChatsService from "../services/chat";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
@@ -24,6 +25,7 @@ import ContactsDrawer from '../components/chat/ContactsDrawer';
 import useContactsService from '../services/contacts';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import ChatSocketSingleton from '../utils/sockets/chat-socket';
 
 interface ChatUser {
   id: number;
@@ -110,6 +112,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   const [isContactsDrawerVisible, setIsContactsDrawerVisible] = useState(false);
   const [savedContactsRefreshToken, setSavedContactsRefreshToken] = useState(0);
   const { createContact } = useContactsService();
+  const connectPresenceInFlightRef = useRef(false);
 
   const [contactsSearchQuery, setContactsSearchQuery] = useState('');
   const [isAddContactModalVisible, setIsAddContactModalVisible] = useState(false);
@@ -146,10 +149,38 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   const { userDetails } = useSelector((state: RootState) => state.user);
   const currentUserId = userDetails?.id;
 
+  const ensureChatPresenceConnected = async () => {
+    if (connectPresenceInFlightRef?.current) return;
+    connectPresenceInFlightRef.current = true;
+    try {
+      if (!ChatSocketSingleton?.isConnected?.()) {
+        await ChatSocketSingleton?.connect?.();
+      }
+    } catch {
+      // Presence is best-effort; we'll still refresh chats below.
+    } finally {
+      connectPresenceInFlightRef.current = false;
+    }
+  };
+
   useEffect(() => {
     fetchChats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // When navigating back to Messages, make sure chat socket is connected
+      // so online status (green dot + online contacts) has a chance to update.
+      void (async () => {
+        await ensureChatPresenceConnected?.();
+        await fetchChats?.();
+      })?.();
+
+      return () => { };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUserId])
+  );
 
   const fetchChats = async () => {
     try {

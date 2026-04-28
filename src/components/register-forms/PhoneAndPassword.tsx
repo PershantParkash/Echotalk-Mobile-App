@@ -189,11 +189,18 @@ const PhoneAndPassword = () => {
         <View className="px-6">
           <PhoneInputWithCountry
             label="Phone number"
+            countryIsoCode={user?.countryIsoCode ?? ''}
             countryCode={user?.countryCode ?? ''}
             phoneNumber={user?.phoneNumber ?? ''}
-            onCountryChange={code =>
+            onCountryChange={(code, iso) =>
               (() => {
-                dispatch(setUpdateAppUser({ ...user, countryCode: code }));
+                dispatch(
+                  setUpdateAppUser({
+                    ...user,
+                    countryCode: code,
+                    countryIsoCode: iso ?? user?.countryIsoCode ?? '',
+                  }),
+                );
                 setErrors(prev =>
                   prev?.phoneNumber ? { ...prev, phoneNumber: undefined } : prev,
                 );

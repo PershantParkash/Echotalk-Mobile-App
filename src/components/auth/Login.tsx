@@ -36,8 +36,9 @@ type LoginScreenProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export default function LoginComponent() {
   const [countryCode, setCountryCode] = useState('92');
+  const [countryIsoCode, setCountryIsoCode] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [password, setPassword] = useState('pass123');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{
     phoneNumber?: string;
@@ -196,10 +197,12 @@ export default function LoginComponent() {
 
             <PhoneInputWithCountry
               label="Phone Number"
+              countryIsoCode={countryIsoCode}
               countryCode={countryCode}
               phoneNumber={phoneNumber}
-              onCountryChange={code => {
+              onCountryChange={(code, iso) => {
                 setCountryCode(code);
+                setCountryIsoCode(iso ?? '');
                 if (errors?.phoneNumber) setErrors({ ...errors, phoneNumber: '' });
               }}
               onPhoneChange={text => {

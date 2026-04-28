@@ -11,18 +11,19 @@ import {
   Image,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Feather from 'react-native-vector-icons/Feather';
 import { RootState } from '../../store';
 import {
+  clearUser,
   setCurrentStep,
+  setForceCompleteProfile,
+  setOtpVerificationId,
   setUpdateAppUserCertification,
 } from '../../store/user/user.actions';
 import { RegisterSteps, UserCertification } from '../../store/user/user.types';
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import useUsersService from '../../services/user';
 import { saveTokens } from '../../utils/storage';
@@ -58,13 +59,19 @@ const CertificationForm: React.FC = () => {
   const {
     updateUser,
     switchToTrainer,
-    loading: apiLoading,
   } = useUsersService();
   const [errors, setErrors] = useState<ValidationErrors[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [showDatePicker, setShowDatePicker] = useState<DatePickerState | null>(
     null,
   );
+
+  const resetRegistrationState = () => {
+    dispatch(clearUser());
+    dispatch(setOtpVerificationId(''));
+    dispatch(setCurrentStep(RegisterSteps.AccountType));
+    dispatch(setForceCompleteProfile(false));
+  };
 
   const handleAddCertification = (): void => {
     dispatch(
@@ -187,11 +194,12 @@ const CertificationForm: React.FC = () => {
       // await saveTokens(response.accessToken, response.refreshToken);
 
       // Navigate to trainer dashboard
+      resetRegistrationState();
       navigation.reset({
         index: 0,
         routes: [{ name: 'TrainerDashboard' as never }],
       });
-    } catch (error: unknown) {
+    } catch {
       Alert.alert(
         'Error',
         'Failed to complete registration. Please try again.',
@@ -219,8 +227,9 @@ const CertificationForm: React.FC = () => {
         text2: 'Your certification details have been successfully updated.',
       });
 
+      resetRegistrationState();
       navigation.replace('MainTabs', { screen: 'HomeTab' });
-    } catch (error: unknown) {
+    } catch {
       Alert.alert(
         'Error',
         'An error occurred while updating certification. Please try again later.',
@@ -289,11 +298,10 @@ const CertificationForm: React.FC = () => {
                     handleCertificationChange(index, 'certificationName', value)
                   }
                   placeholder="Certification name"
-                  className={`bg-gray-100 px-4 py-3 rounded-lg ${
-                    errors[index]?.certificationName
+                  className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.certificationName
                       ? 'border border-red-600'
                       : ''
-                  }`}
+                    }`}
                 />
                 {errors[index]?.certificationName && (
                   <Text className="text-xs text-red-600 mt-1">
@@ -311,9 +319,8 @@ const CertificationForm: React.FC = () => {
                     handleCertificationChange(index, 'institute', value)
                   }
                   placeholder="Institute name"
-                  className={`bg-gray-100 px-4 py-3 rounded-lg ${
-                    errors[index]?.institute ? 'border border-red-600' : ''
-                  }`}
+                  className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.institute ? 'border border-red-600' : ''
+                    }`}
                 />
                 {errors[index]?.institute && (
                   <Text className="text-xs text-red-600 mt-1">
@@ -335,9 +342,8 @@ const CertificationForm: React.FC = () => {
                         field: 'startDate',
                       })
                     }
-                    className={`bg-gray-100 px-4 py-3 rounded-lg ${
-                      errors[index]?.startDate ? 'border border-red-600' : ''
-                    }`}
+                    className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.startDate ? 'border border-red-600' : ''
+                      }`}
                   >
                     <Text
                       className={
@@ -367,9 +373,8 @@ const CertificationForm: React.FC = () => {
                         field: 'endDate',
                       })
                     }
-                    className={`bg-gray-100 px-4 py-3 rounded-lg ${
-                      errors[index]?.endDate ? 'border border-red-600' : ''
-                    }`}
+                    className={`bg-gray-100 px-4 py-3 rounded-lg ${errors[index]?.endDate ? 'border border-red-600' : ''
+                      }`}
                   >
                     <Text
                       className={
