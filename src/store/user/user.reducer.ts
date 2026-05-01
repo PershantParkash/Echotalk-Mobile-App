@@ -4,6 +4,7 @@ const initialState: Types.UserReducerState = {
   user: {
     accountType: null,
     userType: null,
+    countryIsoCode: "",
     countryCode: "",
     phoneNumber: "",
     password: "",

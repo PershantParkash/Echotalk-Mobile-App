@@ -327,7 +327,7 @@ const ChatMessageBarInner: React.FC<ChatMessageBarProps> = ({
               onChangeText={onChangeText}
               placeholder={placeholder}
               placeholderTextColor="#9ca3af"
-              className="flex-1 text-base py-2"
+              className="flex-1 text-base py-2 text-black"
               // multiline
               maxLength={maxLength}
               onSubmitEditing={onSend}

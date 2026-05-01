@@ -18,6 +18,12 @@ import { ensureAudioPermission, ensureVideoPermission } from './src/utils/permis
 import { setupIncomingCallPush } from './src/utils/incomingCallPush';
 import { getAccessToken } from './src/utils/storage';
 
+function callAppLog(event: string, data?: unknown) {
+  const ts = new Date()?.toISOString?.() ?? '';
+  // eslint-disable-next-line no-console
+  console.log?.(`[CallApp][${ts}]`, event, data ?? '');
+}
+
 function isValidIncomingPayload(payload: IncomingCallPayload | undefined): boolean {
   const from = payload?.from;
   const to = payload?.to;
@@ -85,10 +91,10 @@ function AppWithCallSocket() {
   }, []);
 
   useEffect(() => {
-    refreshAuthTokenPresence().catch(() => {});
+    refreshAuthTokenPresence().catch(() => { });
     const onAppState = (state: AppStateStatus) => {
       if (state === 'active') {
-        refreshAuthTokenPresence().catch(() => {});
+        refreshAuthTokenPresence().catch(() => { });
       }
     };
     const sub = AppState.addEventListener('change', onAppState);
@@ -99,7 +105,7 @@ function AppWithCallSocket() {
 
   useEffect(() => {
     if (userId != null) {
-      refreshAuthTokenPresence().catch(() => {});
+      refreshAuthTokenPresence().catch(() => { });
     }
   }, [userId, refreshAuthTokenPresence]);
 
@@ -109,7 +115,7 @@ function AppWithCallSocket() {
       return;
     }
     const id = setInterval(() => {
-      refreshAuthTokenPresence().catch(() => {});
+      refreshAuthTokenPresence().catch(() => { });
     }, 1000);
     return () => clearInterval(id);
   }, [hasAuthToken, refreshAuthTokenPresence]);
@@ -125,15 +131,22 @@ function AppWithCallSocket() {
     hadAuthTokenRef.current = true;
 
     const onReceivingCall = (payload: IncomingCallPayload) => {
-      console.log('Incomming call', payload);
+      callAppLog('on receivingCall', {
+        from: payload?.from,
+        to: payload?.to,
+        roomName: payload?.roomName,
+        callLogId: payload?.callLogId,
+        callType: payload?.callType,
+      });
       if (!isValidIncomingPayload(payload)) {
-        console.log('Incomming call ignored: invalid payload (missing from/to)');
+        callAppLog('receivingCall invalid payload (ignored)', payload);
         return;
       }
       setIncomingCall(payload);
     };
 
     const onCallEnded = (data?: { callLogId?: number }) => {
+      callAppLog('on onCallEnded', data);
       setIncomingCall(prev => {
         if (!incomingEventMatchesPendingCall(prev, data)) {
           return prev;
@@ -143,6 +156,7 @@ function AppWithCallSocket() {
     };
 
     const onCallCancelled = (data?: { callLogId?: number }) => {
+      callAppLog('on onCallCancelled', data);
       setIncomingCall(prev => {
         if (!incomingEventMatchesPendingCall(prev, data)) {
           return prev;
@@ -152,6 +166,7 @@ function AppWithCallSocket() {
     };
 
     const onRejectCall = (data?: { callLogId?: number }) => {
+      callAppLog('on onRejectCall', data);
       setIncomingCall(prev => {
         if (!incomingEventMatchesPendingCall(prev, data)) {
           return prev;
@@ -161,6 +176,7 @@ function AppWithCallSocket() {
     };
 
     const onAnsweredElsewhere = (data: { callLogId?: number }) => {
+      callAppLog('on callAnsweredOnAnotherDevice', data);
       dismissIncomingIfCallLog(data?.callLogId);
     };
 
@@ -174,10 +190,10 @@ function AppWithCallSocket() {
         }
         attachedSocket = instance;
         if (instance.connected) {
-          console.log('[CallSocket] ready (already connected)');
+          callAppLog('CallSocket connected', { id: instance?.id });
         } else {
           instance.once?.('connect', () => {
-            console.log('[CallSocket] connected — incoming calls enabled');
+            callAppLog('CallSocket connected (late)', { id: instance?.id });
           });
         }
         instance.on?.('receivingCall', onReceivingCall);
@@ -208,7 +224,6 @@ function AppWithCallSocket() {
     let cleanup: (() => void) | undefined;
     try {
       cleanup = setupIncomingCallPush(payload => {
-        console.log('Incomming call', payload);
         if (isValidIncomingPayload(payload)) {
           setIncomingCall(payload);
         }
@@ -228,6 +243,13 @@ function AppWithCallSocket() {
     }
     try {
       const sock = await CallSocketSingleton.connect();
+      callAppLog('emit rejectCall (decline modal)', {
+        socketId: sock?.id,
+        from: payload?.from,
+        to: payload?.to,
+        roomName: payload?.roomName,
+        callLogId: payload?.callLogId,
+      });
       sock?.emit?.('rejectCall', incomingCallToRejectPayload(payload));
     } catch {
       // still dismiss UI
@@ -240,6 +262,13 @@ function AppWithCallSocket() {
     if (!payload) {
       return;
     }
+    callAppLog('answer modal pressed', {
+      from: payload?.from,
+      to: payload?.to,
+      roomName: payload?.roomName,
+      callLogId: payload?.callLogId,
+      callType: payload?.callType,
+    });
 
     const needsVideo = payload?.callType === 'video';
     const okAudio = await ensureAudioPermission();

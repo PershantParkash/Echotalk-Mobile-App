@@ -7,16 +7,16 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Image,
   PermissionsAndroid,
-  StyleSheet,
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import {
+  clearUser,
   setCurrentStep,
   setForceCompleteProfile,
+  setOtpVerificationId,
   setUpdateAppUser,
 } from '../../store/user/user.actions';
 import { RegisterSteps, UserType } from '../../store/user/user.types';
@@ -28,6 +28,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/navigation';
 import { useNavigation } from '@react-navigation/native';
 import useS3Upload from '../../hooks/useS3Upload';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MainTabs'>;
 
@@ -57,6 +58,13 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
   const { updateUser } = useUsersService();
   const navigation = useNavigation<NavigationProp>();
   const { uploadImageFromUri } = useS3Upload();
+
+  const resetRegistrationState = () => {
+    dispatch(clearUser());
+    dispatch(setOtpVerificationId(''));
+    dispatch(setCurrentStep(RegisterSteps.AccountType));
+    dispatch(setForceCompleteProfile(false));
+  };
 
   const ensureAndroidGalleryPermission = async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
@@ -116,6 +124,8 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
         mediaType: 'photo',
       });
 
+      console.log('image', image)
+
       const localUri = image?.path?.trim?.() ?? '';
       if (!localUri?.length) {
         throw new Error('Could not read selected image path.');
@@ -133,6 +143,8 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
         fileSize: typeof image?.size === 'number' ? image.size : null,
       });
     } catch (error: any) {
+      console.log('error', error)
+      console.log('error', error)
       const code = error?.code ?? '';
       if (code === 'E_PICKER_CANCELLED') return;
 
@@ -223,6 +235,7 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
       });
 
       if (forceComplete) {
+        resetRegistrationState();
         dispatch(setForceCompleteProfile(false));
         navigation.replace('MainTabs', { screen: 'HomeTab' });
         return;
@@ -231,7 +244,8 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
       if (user.userType === UserType.Trainer) {
         dispatch(setCurrentStep(RegisterSteps.Education));
       } else {
-         navigation.replace('MainTabs', { screen: 'HomeTab' });
+        resetRegistrationState();
+        navigation.replace('MainTabs', { screen: 'HomeTab' });
       }
     } catch (error: any) {
       Toast.show({
@@ -252,12 +266,15 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+      <KeyboardAwareScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        enableOnAndroid
+        extraScrollHeight={20}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         {/* Header */}
         <View className="mt-4 h-12 justify-center">
@@ -293,9 +310,8 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
             className="relative"
           >
             <View
-              className={`w-32 h-32 rounded-full bg-gray-300 items-center justify-center ${
-                errors.profileImage ? 'border-2 border-red-500' : ''
-              }`}
+              className={`w-32 h-32 rounded-full bg-gray-300 items-center justify-center ${errors.profileImage ? 'border-2 border-red-500' : ''
+                }`}
             >
               {pendingProfileImage?.uri?.length || user.image ? (
                 <Image
@@ -335,10 +351,9 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
               <Feather name="user" size={20} color="#9CA3AF" />
             </View>
             <TextInput
-              className={`w-full pl-12 pr-4 py-3 rounded-lg border ${
-                errors.firstName ? 'border-red-500' : 'border-gray-300'
-              } bg-gray-50`}
-              placeholder="Madhinn"
+              className={`w-full pl-12 pr-4 py-3 rounded-lg border ${errors.firstName ? 'border-red-500' : 'border-gray-300'
+                } bg-gray-50`}
+              placeholder="First Name"
               placeholderTextColor="#9CA3AF"
               value={user.firstName}
               onChangeText={(text) =>
@@ -364,10 +379,9 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
               <Feather name="user" size={20} color="#9CA3AF" />
             </View>
             <TextInput
-              className={`w-full pl-12 pr-4 py-3 rounded-lg border ${
-                errors.lastName ? 'border-red-500' : 'border-gray-300'
-              } bg-gray-50`}
-              placeholder="Asghar"
+              className={`w-full pl-12 pr-4 py-3 rounded-lg border ${errors.lastName ? 'border-red-500' : 'border-gray-300'
+                } bg-gray-50`}
+              placeholder="Last Name"
               placeholderTextColor="#9CA3AF"
               value={user.lastName}
               onChangeText={(text) =>
@@ -391,10 +405,9 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
               <Feather name="mail" size={20} color="#9CA3AF" />
             </View>
             <TextInput
-              className={`w-full pl-12 pr-12 py-3 rounded-lg border ${
-                errors.email ? 'border-red-500' : 'border-gray-300'
-              } bg-gray-50`}
-              placeholder="Madhinnasrghar@gmail.com"
+              className={`w-full pl-12 pr-12 py-3 rounded-lg border ${errors.email ? 'border-red-500' : 'border-gray-300'
+                } bg-gray-50`}
+              placeholder="Email"
               placeholderTextColor="#9CA3AF"
               value={user.email}
               onChangeText={(text) =>
@@ -418,9 +431,8 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
         {/* Continue Button */}
         <TouchableOpacity
           onPress={handleSubmit}
-          className={`mt-6 h-12 rounded-lg justify-center items-center mx-6 ${
-            loading ? 'bg-gray-400' : 'bg-[#5B2EC4]'
-          }`}
+          className={`mt-6 h-12 rounded-lg justify-center items-center mx-6 ${loading ? 'bg-gray-400' : 'bg-[#5B2EC4]'
+            }`}
           disabled={loading}
           activeOpacity={0.7}
         >
@@ -432,13 +444,9 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
             </Text>
           )}
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 };
 
 export default PersonalDetails;
-
-const styles = StyleSheet.create({
-  scrollContent: { flexGrow: 1 },
-});

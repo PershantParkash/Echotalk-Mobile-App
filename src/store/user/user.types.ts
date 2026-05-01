@@ -60,6 +60,11 @@ export type languageError = {
 export type AppUser = {
   accountType: AccountType | null;
   userType: UserType | null;
+  /**
+   * ISO-3166 alpha-2 country code (e.g. "US").
+   * Needed because multiple countries can share the same calling code (e.g. +1).
+   */
+  countryIsoCode?: string;
   countryCode: string;
   phoneNumber: string;
   password: string;

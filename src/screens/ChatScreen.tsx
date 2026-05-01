@@ -198,7 +198,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   // WebSocket connection effect
   // WebSocket connection effect
   useEffect(() => {
-    // console.log('🔌 Setting up WebSocket connection for chat:', chatId);
 
     const initializeSocket = async () => {
       try {
@@ -206,7 +205,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         socketRef.current = socket;
 
         socket.on('connect', () => {
-          // console.log('✅ Mobile chat connected:', socket.id);
           // Join this specific chat room
           socket.emit('joinAllChats', [chatId]);
         });
@@ -251,7 +249,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         });
 
         socket.on('disconnect', () => {
-          // console.log('❌ Socket disconnected');
         });
 
         socket.on('error', (_error: any) => {
@@ -270,7 +267,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
     // Cleanup on unmount
     return () => {
-      // console.log('🔌 Cleaning up socket connection');
       if (socketRef.current) {
         socketRef.current.off('newMessage');
         socketRef.current.off('userRecording');
@@ -653,12 +649,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     const messageContent = newMessage.trim();
 
     if (messageContent === '') {
-      // console.log('Message is empty, not sending');
       return;
     }
 
     if (sending) {
-      // console.log('Already sending a message');
       return;
     }
 
@@ -1126,7 +1120,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     try {
       // Check if the user has the required audio permissions
       const hasAudio = await ensureAudioPermission();
-
       // If the user doesn't have the required audio permissions, show an alert and return
       if (!hasAudio) {
         Alert.alert('Permission', 'Microphone permission is required for calls.');
@@ -1146,6 +1139,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       const socket = await CallSocketSingleton.connect();
       const fromId = currentUserId;
       const toId = otherUser.id;
+      if (!fromId || !toId) {
+        Alert.alert('Call error', 'Unable to start call: missing user info.');
+        return;
+      }
       const roomName = generateRoomName(fromId, toId);
       const callerName = userDetails.fullName ?? '';
       const callerProfileImage = userDetails.profileImage ?? '';
@@ -1165,7 +1162,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         callType,
       });
 
-      navigation?.navigate?.('CallScreen', {});
+      navigation?.navigate?.('CallScreen', {
+        callPayload: {
+          from: String(fromId ?? ''),
+          to: String(toId ?? ''),
+          callerName,
+          callerProfileImage,
+          calleeName,
+          calleeProfileImage,
+          roomName,
+          startTime: new Date(),
+          callLogId: null,
+          callType,
+        },
+        answerIncoming: false,
+      });
     } catch {
       Alert.alert(
         'Call error',

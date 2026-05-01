@@ -55,7 +55,6 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     if (label === 'Settings') {
       navigation.navigate('Settings');
     } else {
-      // console.log(`${label} pressed`);
     }
   };
 

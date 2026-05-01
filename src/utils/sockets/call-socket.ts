@@ -1,14 +1,13 @@
 import { io, Socket } from "socket.io-client";
 import { getAccessToken } from "../storage";
 import { NEXT_PUBLIC_API_BASE } from "@env";
-
 class CallSocketSingleton {
   private static instance: Socket | null = null;
   private static currentToken: string | null = null;
   /** Single in-flight connect; avoids parallel connects creating two sockets or killing a handshaking socket. */
   private static connectPromise: Promise<Socket> | null = null;
 
-  private constructor() {}
+  private constructor() { }
 
   private static waitUntilConnectedOrError(socket: Socket, ms: number): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -52,6 +51,8 @@ class CallSocketSingleton {
       CallSocketSingleton.currentToken === token
     ) {
       try {
+        // If a socket exists but is disconnected (or mid-handshake), trigger connect then wait.
+        CallSocketSingleton.instance.connect?.();
         await CallSocketSingleton.waitUntilConnectedOrError(
           CallSocketSingleton.instance,
           20_000,
@@ -168,7 +169,7 @@ class CallSocketSingleton {
           CallSocketSingleton.updateAuthentication(t);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }
 
   public static disconnect(): void {
