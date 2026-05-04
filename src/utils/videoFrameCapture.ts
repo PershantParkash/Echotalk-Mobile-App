@@ -3,6 +3,8 @@ import { captureRef } from 'react-native-view-shot';
 type StartRenderedViewFrameCaptureParams = {
   targetRef: React.RefObject<any>;
   intervalMs?: number;
+  /** JPEG compression quality (0..1). Default: 0.6 */
+  jpegQuality?: number;
   /** Fail-safe timeout for a single snapshot attempt (ms). */
   captureTimeoutMs?: number;
   label?: string;
@@ -16,8 +18,9 @@ type StartRenderedViewFrameCaptureParams = {
 export function startRenderedViewFrameCapture({
   targetRef,
   intervalMs = 750,
+  jpegQuality = 0.6,
   captureTimeoutMs = 1500,
-  label = 'call-frame',
+  label: _label = 'call-frame',
   onFrameBase64,
 }: StartRenderedViewFrameCaptureParams) {
   let stopped = false;
@@ -32,7 +35,7 @@ export function startRenderedViewFrameCapture({
     try {
       const capturePromise = captureRef(node, {
         format: 'jpg',
-        quality: 0.55,
+        quality: Math.max(0, Math.min(1, Number(jpegQuality ?? 0.6))),
         result: 'base64',
       });
 
@@ -49,12 +52,7 @@ export function startRenderedViewFrameCapture({
       // const elapsedMs = Date.now() - startedAt;
       // const size = base64?.length ?? 0;
 
-      // console.log(`[${label}] frame captured`, { elapsedMs, size });
-    } catch (e) {
-      console.log(
-        `[${label}] frame capture failed`,
-        e instanceof Error ? e.message : String(e ?? 'unknown'),
-      );
+    } catch (_e) {
     } finally {
       inFlight = false;
     }

@@ -108,6 +108,12 @@ android {
             }
         }
     }
+    // Slow or cold emulators often hit ddmlib PropertyFetcher timeouts (default is short),
+    // which shows up as "Unknown API Level" and failed :app:installDebug variant selection.
+    adbOptions {
+        timeOutInMs 120000
+    }
+
     buildTypes {
         debug {
             signingConfig signingConfigs.debug

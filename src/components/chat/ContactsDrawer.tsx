@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useUsersService from '../../services/user';
 import { SendHorizontal } from 'lucide-react-native';
 import useContactsService from '../../services/contacts';
@@ -63,6 +64,7 @@ export default function ContactsDrawer({
   onPressChatContact,
   isInitiatingChat = false,
 }: ContactsDrawerProps) {
+  const insets = useSafeAreaInsets();
   const [allUsersPhoneNumbers, setAllUsersPhoneNumbers] = useState<any>([]);
   const [userIdByNormalizedPhone, setUserIdByNormalizedPhone] = useState<
     Record<string, string | number>
@@ -140,7 +142,6 @@ export default function ContactsDrawer({
         message:
           `Hi ${item?.name}, Join me on EchoTalk. Download the app and let’s chat!`,
       })?.catch?.((_e) => {
-        /* console.log('Share error:', _e) */
       });
     }
   }
@@ -185,19 +186,24 @@ export default function ContactsDrawer({
       transparent
       animationType="none"
       onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
     >
       <Pressable
         onPress={onClose}
-        // style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}
         className="flex-1"
+        style={styles.backdrop}
       >
         <Pressable onPress={() => { }} className="flex-1 justify-end">
           <Animated.View
             style={[
               { height: drawerHeight },
               styles.drawerShadow,
+              { transform: [{ translateY: drawerTranslateY }] },
+              // Extend drawer background to the very bottom (covers home indicator area)
+              { paddingBottom: insets?.bottom ?? 0 },
             ]}
-            className={`h-[${drawerHeight}px] bg-white rounded-t-[18px] px-[18] pt-[14] pb-[24px] transform:translateY(${drawerTranslateY})`}
+            className="bg-white rounded-t-[18px] px-[18] pt-[14]"
           >
             <View className="flex-row items-center justify-between mb-4">
               <Text className="text-[16px] font-semibold text-[#092724]">
@@ -407,6 +413,9 @@ export default function ContactsDrawer({
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
   drawerShadow: {
     shadowColor: '#000',
     shadowOpacity: 1,
@@ -415,6 +424,6 @@ const styles = StyleSheet.create({
     elevation: 18,
   },
   flatListContentContainer: {
-    paddingBottom: 18,
+    paddingBottom: 0,
   },
 });

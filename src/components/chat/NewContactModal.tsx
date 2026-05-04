@@ -10,6 +10,8 @@ type NewContactModalProps = {
   setFirstName: (v: string) => void;
   lastName: string;
   setLastName: (v: string) => void;
+  countryIsoCode?: string;
+  setCountryIsoCode?: (v: string) => void;
   countryCode: string;
   setCountryCode: (v: string) => void;
   phoneNumber: string;
@@ -24,6 +26,8 @@ const NewContactModal = ({
   setFirstName,
   lastName,
   setLastName,
+  countryIsoCode,
+  setCountryIsoCode,
   countryCode,
   setCountryCode,
   phoneNumber,
@@ -145,10 +149,12 @@ const NewContactModal = ({
 
             <PhoneInputWithCountry
               label="Phone Number"
+              countryIsoCode={countryIsoCode}
               countryCode={countryCode}
               phoneNumber={phoneNumber}
-              onCountryChange={(code) => {
+              onCountryChange={(code, iso) => {
                 setCountryCode(code ?? '');
+                setCountryIsoCode?.(iso ?? '');
                 if (errors?.phoneNumber) setErrors({ ...errors, phoneNumber: '' });
               }}
               onPhoneChange={(text) => {

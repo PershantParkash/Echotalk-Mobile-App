@@ -10,39 +10,13 @@ const useApi = () => {
     setLoading(true);
     setError(null);
 
-    // console.log('===>', axiosClient.defaults.baseURL)
-
     try {
-      // console.log('API Request:', {
-      //   method: config.method,
-      //   url: config.url,
-      //   baseURL: axiosClient.defaults.baseURL,
-      //   fullURL: `${axiosClient.defaults.baseURL}${config.url}`,
-      // });
-
       const response = await axiosClient(config);
-
-      // console.log('API Response:', {
-      //   status: response.status,
-      //   data: response.data,
-      // });
 
       return response.data;
     } catch (err) {
       let errorMessage = "Something went wrong";
-
       if (axios.isAxiosError(err)) {
-        // console.error('Axios Error Details:', {
-        //   message: err.message,
-        //   response: err.response?.data,
-        //   status: err.response?.status,
-        //   config: {
-        //     url: err.config?.url,
-        //     baseURL: err.config?.baseURL,
-        //     method: err.config?.method,
-        //   },
-        // });
-
         // Better error messages based on status code
         if (err.response?.status === 401) {
           errorMessage = "Invalid phone number or password";

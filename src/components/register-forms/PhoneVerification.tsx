@@ -28,7 +28,7 @@ const PhoneVerification = () => {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ otp?: string }>({});
 
-const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => state.user);
+  const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch();
   const { signup } = useAuthService();
 
@@ -54,7 +54,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
       if (!firebaseOtpVerificationId) {
         throw new Error('Verification ID not found. Please request OTP again.');
       }
-      
+
       // Create credential using React Native Firebase
       const credential = auth.PhoneAuthProvider.credential(
         firebaseOtpVerificationId,
@@ -62,7 +62,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
       );
 
       await auth().signInWithCredential(credential);
-      
+
 
       const response = await signup({
         phoneNumber: `+${user?.countryCode ?? ''}${user?.phoneNumber ?? ''}`,
@@ -113,8 +113,7 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
     try {
       setLoading(true);
       const formattedPhone = `+${user?.countryCode ?? ''}${user?.phoneNumber?.replace(/\s/g, '') ?? ''}`;
-      
-      // console.log('Resending OTP...');
+
       const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
 
       if (!confirmation?.verificationId) {
@@ -185,9 +184,8 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
             Enter OTP
           </Text>
           <TextInput
-            className={`w-full px-4 py-3 rounded-lg border ${
-              errors.otp ? 'border-red-500' : 'border-gray-300'
-            } text-center text-lg tracking-widest`}
+            className={`w-full px-4 py-3 rounded-lg border ${errors.otp ? 'border-red-500' : 'border-gray-300'
+              } text-center text-lg tracking-widest`}
             placeholder="000000"
             placeholderTextColor="#9CA3AF"
             value={user.otp}
@@ -216,9 +214,8 @@ const { user, firebaseOtpVerificationId } = useSelector((state: RootState) => st
         {/* Verify Button */}
         <TouchableOpacity
           onPress={handleVerifyOtp}
-          className={`mt-2 h-12 rounded-lg justify-center items-center mx-6 ${
-            loading ? 'bg-gray-400' : 'bg-[#5B2EC4]'
-          }`}
+          className={`mt-2 h-12 rounded-lg justify-center items-center mx-6 ${loading ? 'bg-gray-400' : 'bg-[#5B2EC4]'
+            }`}
           disabled={loading}
           activeOpacity={0.7}
         >

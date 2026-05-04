@@ -14,7 +14,6 @@ const useAuthService = () => {
   };
 
   const signin = async (user: SigninUser) => {
-    console.log("=>", AuthEndpointsV1.signin)
     return await callApi({
       method: "post",
       url: AuthEndpointsV1.signin,

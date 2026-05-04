@@ -8,7 +8,6 @@ const axiosClient = axios.create({
   timeout: 10000,
 });
 
-
 // Dedicated client for refreshing tokens (must NOT use axiosClient to avoid interceptor loops)
 const refreshClient = axios.create({
   baseURL: NEXT_PUBLIC_API_URL,
