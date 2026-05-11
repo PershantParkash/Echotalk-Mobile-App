@@ -6,6 +6,7 @@ import {
   Alert,
   StyleSheet,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { RouteProp } from '@react-navigation/native';
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react-native';
 import { RootStackParamList } from '../navigation/navigation';
 import CallSocketSingleton from '../utils/sockets/call-socket';
+import { fetchAndEmitCallMessage } from '../utils/callMessageBridge';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import createAgoraRtcEngine, {
@@ -54,7 +56,10 @@ const CallScreen = () => {
   // const [speakerOn, setSpeakerOn] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
   const [callStatus, setCallStatus] = useState<'calling' | 'receiving' | 'active' | 'ended'>('calling');
+  const [recipientOnline, setRecipientOnline] = useState(false);
   const [calleeName, setCalleeName] = useState<string>('');
+  const [calleeProfileImage, setCalleeProfileImage] = useState<string>('');
+  const [calleeProfileImageErrored, setCalleeProfileImageErrored] = useState(false);
   const [roomName, setRoomName] = useState<string>('');
   const [callType, setCallType] = useState<'audio' | 'video'>('audio');
   const [callLogId, setCallLogId] = useState<number | null>(null);
@@ -76,6 +81,8 @@ const CallScreen = () => {
   const [mediaReady, setMediaReady] = useState(false);
   const [callSocketReady, setCallSocketReady] = useState(false);
   const answerEmittedRef = useRef(false);
+  const lastCallerIdRef = useRef<string | null>(null);
+  const callEndHandledRef = useRef(false);
   const localVideoCaptureRef = useRef<any | null>(null);
   const remoteVideoCaptureRef = useRef<any | null>(null);
   const stopFrameCaptureRef = useRef<null | (() => void)>(null);
@@ -135,7 +142,10 @@ const CallScreen = () => {
 
     // Reset call metadata.
     peerIdsRef.current = {};
+    setRecipientOnline(false);
     setCalleeName('');
+    setCalleeProfileImage('');
+    setCalleeProfileImageErrored(false);
     setRoomName('');
     setCallType('audio');
     setCallLogId(null);
@@ -143,6 +153,7 @@ const CallScreen = () => {
 
     // Local flags.
     answerEmittedRef.current = false;
+    callEndHandledRef.current = false;
   }, []);
 
   const endLocally = useCallback(async () => {
@@ -212,11 +223,18 @@ const CallScreen = () => {
     setCallType(p?.callType === 'video' ? 'video' : 'audio');
     const isAnsweringIncoming = route.params?.answerIncoming === true;
     setCalleeName(isAnsweringIncoming ? (p?.callerName ?? '') : (p?.calleeName ?? ''));
+    setCalleeProfileImage(
+      isAnsweringIncoming
+        ? String(p?.callerProfileImage ?? '')
+        : String(p?.calleeProfileImage ?? ''),
+    );
+    setCalleeProfileImageErrored(false);
     setCallStatus(isAnsweringIncoming ? 'receiving' : 'calling');
     peerIdsRef.current = {
       from: String(p.from),
       to: String(p.to),
     };
+    lastCallerIdRef.current = String(p.from);
   }, [route.params?.answerIncoming, route.params?.callPayload]);
 
   /** Emit answer once the call socket is connected (after modal Answer). */
@@ -254,14 +272,24 @@ const CallScreen = () => {
       if (data?.callLogId != null) setCallLogId(data.callLogId ?? null);
       if (data?.startTime != null) setStartTime(data.startTime ?? null);
       if (data?.callType != null) setCallType((data?.callType as 'audio' | 'video') ?? 'audio');
+      if (typeof data?.recipientOnline === 'boolean') {
+        setRecipientOnline(data.recipientOnline);
+      }
       if (data?.calleeName != null || data?.callerName != null) {
         setCalleeName(data?.calleeName ?? data?.callerName ?? '');
+      }
+      if (data?.calleeProfileImage != null || data?.callerProfileImage != null) {
+        setCalleeProfileImage(String(data?.calleeProfileImage ?? data?.callerProfileImage ?? ''));
+        setCalleeProfileImageErrored(false);
       }
       setCallStatus('calling');
       peerIdsRef.current = {
         from: data?.from != null ? String(data.from) : peerIdsRef.current.from,
         to: data?.to != null ? String(data.to) : peerIdsRef.current.to,
       };
+      if (data?.from != null) {
+        lastCallerIdRef.current = String(data.from);
+      }
     };
 
     const handleReceivingCall = (data: any) => {
@@ -270,11 +298,19 @@ const CallScreen = () => {
       if (data?.startTime != null) setStartTime(data.startTime ?? null);
       if (data?.callType != null) setCallType((data?.callType as 'audio' | 'video') ?? 'audio');
       if (data?.callerName != null) setCalleeName(String(data.callerName ?? ''));
+      if (data?.callerProfileImage != null) {
+        setCalleeProfileImage(String(data?.callerProfileImage ?? ''));
+        setCalleeProfileImageErrored(false);
+      }
       setCallStatus('receiving');
+      setRecipientOnline(false);
       peerIdsRef.current = {
         from: data?.from != null ? String(data.from) : peerIdsRef.current.from,
         to: data?.to != null ? String(data.to) : peerIdsRef.current.to,
       };
+      if (data?.from != null) {
+        lastCallerIdRef.current = String(data.from);
+      }
     };
 
     const handleCallAccepted = async (data: any) => {
@@ -282,6 +318,7 @@ const CallScreen = () => {
       if (data?.callLogId != null) setCallLogId(data.callLogId ?? null);
       if (data?.startTime != null) setStartTime(data.startTime ?? null);
       setCallStatus('active');
+      setRecipientOnline(false);
       setRemoteUid(null);
       peerIdsRef.current = {
         from: data?.from != null ? String(data.from) : peerIdsRef.current.from,
@@ -357,7 +394,13 @@ const CallScreen = () => {
     };
 
     const handleEnd = async () => {
+      if (callEndHandledRef.current) return;
+      callEndHandledRef.current = true;
+      const callerId = lastCallerIdRef.current;
       await endLocally();
+      if (callerId) {
+        fetchAndEmitCallMessage(callerId);
+      }
     };
 
     const handleAnsweredElsewhere = async () => {
@@ -430,6 +473,22 @@ const CallScreen = () => {
       Alert.alert('Video request', 'Video request was declined.');
     };
 
+    const handleUserStatusChanged = (data: any) => {
+      // Mirror web: while outgoing and not accepted, show Ringing... when callee is online.
+      if (callStatus !== 'calling') {
+        return;
+      }
+      const calleeId = peerIdsRef.current.to;
+      if (!calleeId) {
+        return;
+      }
+      const userId = data?.userId != null ? String(data.userId) : '';
+      const isOnline = typeof data?.isOnline === 'boolean' ? data.isOnline : undefined;
+      if (userId && isOnline != null && userId === String(calleeId)) {
+        setRecipientOnline(isOnline);
+      }
+    };
+
     socket.on?.('callInitiated', handleCallInitiated);
     socket.on?.('receivingCall', handleReceivingCall);
     socket.on?.('callAccepted', handleCallAccepted);
@@ -440,6 +499,7 @@ const CallScreen = () => {
     socket.on?.('receivingVideoCallRequest', handleReceivingVideoCallRequest);
     socket.on?.('videoCallAccepted', handleVideoCallAccepted);
     socket.on?.('videoCallDenied', handleVideoCallDenied);
+    socket.on?.('userStatusChanged', handleUserStatusChanged);
 
     return () => {
       socket.off?.('callInitiated', handleCallInitiated);
@@ -452,8 +512,9 @@ const CallScreen = () => {
       socket.off?.('receivingVideoCallRequest', handleReceivingVideoCallRequest);
       socket.off?.('videoCallAccepted', handleVideoCallAccepted);
       socket.off?.('videoCallDenied', handleVideoCallDenied);
+      socket.off?.('userStatusChanged', handleUserStatusChanged);
     };
-  }, [callSocketReady, callType, roomName, userDetails?.id, endLocally]);
+  }, [callSocketReady, callType, roomName, userDetails?.id, endLocally, callStatus]);
 
   const emitEndCall = () => {
     const socket = socketRef.current;
@@ -493,7 +554,7 @@ const CallScreen = () => {
       }
 
       // Default: outgoing "cancel".
-      socket.emit?.('cancelCall', {
+      socket.emit?.('callCancelled', {
         from: selfId,
         to: otherUserId ?? '',
         callerName: userDetails.fullName ?? '',
@@ -522,8 +583,14 @@ const CallScreen = () => {
   };
 
   const handleEndPress = async () => {
+    if (callEndHandledRef.current) return;
+    callEndHandledRef.current = true;
+    const callerId = lastCallerIdRef.current;
     emitEndCall();
     await endLocally();
+    if (callerId) {
+      setTimeout(() => fetchAndEmitCallMessage(callerId), 800);
+    }
   };
 
   const toggleMute = () => {
@@ -603,7 +670,9 @@ const CallScreen = () => {
         ? callType === 'video'
           ? 'In video call'
           : 'In call'
-        : 'Calling...';
+        : recipientOnline
+          ? 'Ringing...'
+          : 'Calling...';
 
   const showVideoLayout =
     callStatus === 'active' && callType === 'video' && mediaReady;
@@ -814,9 +883,17 @@ const CallScreen = () => {
       ) : (
         <View className="flex-1 items-center justify-center px-6">
           <View className="mb-5 h-28 w-28 items-center justify-center rounded-full bg-neutral-700">
-            <Text className="text-3xl font-semibold text-white">
-              {calleeName?.[0] ?? '?'}
-            </Text>
+            {calleeProfileImage?.trim?.() && !calleeProfileImageErrored ? (
+              <Image
+                source={{ uri: calleeProfileImage.trim() }}
+                style={styles.calleeAvatar}
+                onError={() => setCalleeProfileImageErrored(true)}
+              />
+            ) : (
+              <Text className="text-3xl font-semibold text-white">
+                {calleeName?.trim?.()?.[0] ?? '?'}
+              </Text>
+            )}
           </View>
           <Text className="text-center text-xl font-semibold text-white">
             {calleeName || 'Call'}
@@ -904,6 +981,11 @@ const CallScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  calleeAvatar: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 9999,
+  },
   remoteVideo: {
     flex: 1,
     width: '100%',

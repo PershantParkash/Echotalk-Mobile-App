@@ -26,6 +26,7 @@ import useContactsService from '../services/contacts';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import ChatSocketSingleton from '../utils/sockets/chat-socket';
+import { mergeUserWithPresence } from '../utils/presenceMerge';
 
 interface ChatUser {
   id: number;
@@ -35,6 +36,7 @@ interface ChatUser {
   profileImage: string | null;
   contactName: { name: string } | null;
   isOnline: boolean;
+  lastSeenAt?: string;
 }
 interface LastMessage {
   id: number;
@@ -98,7 +100,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
 }) => {
   // All hooks must be at the top level - this is critical!
   const [conversations, setConversations] = useState<Chat[]>([]);
-  const [onlineContacts, setOnlineContacts] = useState<ChatUser[]>([]);
   const [isInitiatingChat, setIsInitiatingChat] = useState(false);
   const latestInitiationTokenRef = useRef(0);
   const [refreshingConversations, setRefreshingConversations] = useState(false);
@@ -148,6 +149,38 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   } = useChatsService();
   const { userDetails } = useSelector((state: RootState) => state.user);
   const currentUserId = userDetails?.id;
+  const presenceByUserId = useSelector(
+    (state: RootState) => state.presence?.byUserId,
+  );
+
+  const conversationsWithPresence = useMemo(() => {
+    return (
+      conversations?.map((chat) => ({
+        ...chat,
+        users:
+          chat?.users?.map(
+            (u) => mergeUserWithPresence(u, presenceByUserId) ?? u,
+          ) ?? [],
+      })) ?? []
+    );
+  }, [conversations, presenceByUserId]);
+
+  const onlineContacts = useMemo(() => {
+    const allUsers =
+      conversationsWithPresence?.flatMap?.((c) => c?.users ?? []) ?? [];
+    return allUsers
+      .filter((user: ChatUser) => {
+        if (typeof currentUserId === 'number') {
+          return user?.id !== currentUserId && user?.isOnline;
+        }
+        return user?.isOnline;
+      })
+      .filter(
+        (user: ChatUser, index: number, self: ChatUser[]) =>
+          self.findIndex((u) => u.id === user.id) === index,
+      )
+      .slice(0, 5);
+  }, [conversationsWithPresence, currentUserId]);
 
   const ensureChatPresenceConnected = async () => {
     if (connectPresenceInFlightRef?.current) return;
@@ -170,8 +203,8 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
 
   useFocusEffect(
     React.useCallback(() => {
-      // When navigating back to Messages, make sure chat socket is connected
-      // so online status (green dot + online contacts) has a chance to update.
+      // Chat socket: messages/delivery sync. Live online/offline comes from `/call`
+      // (PresenceSync + getChats baseline). Refresh chats when returning to this screen.
       void (async () => {
         await ensureChatPresenceConnected?.();
         await fetchChats?.();
@@ -186,22 +219,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     try {
       const chats = await getChats();
       setConversations(chats ?? []);
-
-      // Extract online contacts from all chats (excluding current user)
-      const allUsers = (chats ?? [])?.flatMap?.((chat: Chat) => chat?.users ?? []) ?? [];
-      const uniqueOnlineUsers = allUsers
-        .filter((user: ChatUser) => {
-          if (typeof currentUserId === 'number') {
-            return user?.id !== currentUserId && user?.isOnline;
-          }
-          return user?.isOnline;
-        })
-        .filter((user: ChatUser, index: number, self: ChatUser[]) =>
-          self.findIndex(u => u.id === user.id) === index
-        )
-        .slice(0, 5); // Limit to 5 contacts
-
-      setOnlineContacts(uniqueOnlineUsers);
     } catch {
       // console.error('Error fetching chats:', error);
     } finally {
@@ -299,20 +316,27 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   };
 
   const handleChatPress = (chat: Chat) => {
-    // Navigate to chat detail screen
-    if (navigation?.navigate) {
-      navigation.navigate('ChatScreen', {
-        chatId: chat.id,
-        chat: chat,
-        currentUserId,
-      });
+    if (!navigation?.navigate) {
+      return;
     }
+    const merged =
+      conversationsWithPresence?.find?.((c) => c?.id === chat?.id) ?? chat;
+    navigation.navigate('ChatScreen', {
+      chatId: merged.id,
+      chat: merged,
+      currentUserId,
+    });
   };
 
   const openSelectedChat = (chat: Chat, initialMessages: any[]) => {
+    const mergedUsers =
+      chat?.users?.map(
+        (u) => mergeUserWithPresence(u, presenceByUserId) ?? u,
+      ) ?? [];
+    const mergedChat = { ...chat, users: mergedUsers };
     navigation?.navigate?.('ChatScreen', {
-      chatId: chat?.id,
-      chat,
+      chatId: mergedChat?.id,
+      chat: mergedChat,
       currentUserId,
       initialMessages,
     });
@@ -688,7 +712,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
 
         {/* Messages List */}
         <View className="px-6 py-2 flex-1">
-          {conversations.length === 0 ? (
+          {conversationsWithPresence.length === 0 ? (
             <View className="flex-1 items-center justify-center py-12">
               <Text className="text-[#092724] text-xl font-semibold">
                 No conversations yet
@@ -708,7 +732,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
               </TouchableOpacity>
             </View>
           ) : (
-            conversations.map((chat) => {
+            conversationsWithPresence.map((chat) => {
               const otherUser = getOtherUser(chat);
               if (!otherUser) return null;
 

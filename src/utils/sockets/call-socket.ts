@@ -1,6 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import { getAccessToken } from "../storage";
 import { NEXT_PUBLIC_API_BASE } from "@env";
+
 class CallSocketSingleton {
   private static instance: Socket | null = null;
   private static currentToken: string | null = null;

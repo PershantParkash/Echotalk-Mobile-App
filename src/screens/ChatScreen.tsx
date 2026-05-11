@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import audioRecorderPlayer from '../utils/audioRecorderPlayer';
 import {
   View,
@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Video, Phone, X } from 'lucide-react-native';
 import useChatsService from '../services/chat';
@@ -21,6 +22,7 @@ import CallSocketSingleton from '../utils/sockets/call-socket';
 // import SocketDebugOverlay from '../components/SocketDebugOverlay';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { mergeUserWithPresence } from '../utils/presenceMerge';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatMessageBar, {
   recordingElapsedSecFromClock,
@@ -38,6 +40,8 @@ import {
 } from '../utils/chatMessages';
 import { voiceRecordingAudioSet } from '../utils/voiceRecordingConfig';
 import { ensureAudioPermission, ensureVideoPermission } from '../utils/permissions';
+import OutgoingCallConsentModal from '../components/call/OutgoingCallConsentModal';
+import { CALL_MESSAGE_EVENT, type CallMessagePayload } from '../utils/callMessageBridge';
 
 interface Message {
   id: number;
@@ -195,6 +199,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         ? chat?.users?.[0]
         : undefined;
 
+  const presenceByUserId = useSelector(
+    (state: RootState) => state.presence?.byUserId,
+  );
+
+  const otherUserLive = useMemo(
+    () => mergeUserWithPresence(otherUser, presenceByUserId) ?? otherUser,
+    [otherUser, presenceByUserId],
+  );
+
   // WebSocket connection effect
   // WebSocket connection effect
   useEffect(() => {
@@ -277,6 +290,22 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       ChatSocketSingleton.disconnect();
     };
   }, [chatId, currentUserId, userDetails?.id]);
+
+  useEffect(() => {
+    const chatUserIds = chat?.users?.map((u: ChatUser) => u?.id) ?? [];
+    const subscription = DeviceEventEmitter.addListener(
+      CALL_MESSAGE_EVENT,
+      (payload: CallMessagePayload) => {
+        if (payload?.callerId && chatUserIds?.includes(payload.callerId)) {
+          setMessages(prev =>
+            mergeIncomingSocketMessage<Message>(prev, payload.message),
+          );
+          setTimeout(() => scrollToBottom(), 100);
+        }
+      },
+    );
+    return () => subscription?.remove();
+  }, [chatId, chat?.users]);
 
   /** Only run voice cleanup when `chatId` changes — not when `userDetails` updates (that was stopping the recorder mid-session). */
   const resetVoiceRef = useRef(resetVoiceSession);
@@ -833,12 +862,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   };
 
   const getLastSeenText = (): string => {
-    if (otherUser?.isOnline) {
+    if (otherUserLive?.isOnline) {
       return 'Active now';
     }
 
-    if (otherUser?.lastSeenAt) {
-      const lastSeen = new Date(otherUser.lastSeenAt);
+    if (otherUserLive?.lastSeenAt) {
+      const lastSeen = new Date(otherUserLive.lastSeenAt);
       const now = new Date();
       const diffInMinutes = Math.floor(
         (now.getTime() - lastSeen.getTime()) / 60000,
@@ -936,10 +965,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
             </View>
           )}
           {isMyMessage && (
-            <CallMessageCard
-              message={message}
-              formatMessageTime={formatTime}
-            />
+            <View className="flex-row items-start mb-2 justify-end">
+              <View className="flex-1 min-w-0 max-w-[92%] items-end">
+                <Text className="text-sm font-semibold mb-1 text-gray-900">
+                  {message?.sender?.fullName || 'You'}
+                </Text>
+                <CallMessageCard
+                  message={message}
+                  formatMessageTime={formatTime}
+                />
+              </View>
+              <Image
+                source={{ uri: getProfileImage(message.sender) }}
+                className="w-10 h-10 rounded-full ml-2"
+              />
+            </View>
           )}
         </View>
       );
@@ -975,16 +1015,25 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
             </View>
           )}
           {isMyMessage && (
-            <View className="items-end">
-              <VoiceMessageBubble
-                audioUri={audioUri}
-                isMyMessage
-                messageId={message.id}
-                initialDurationSec={message.voiceDurationSec ?? null}
+            <View className="flex-row items-start mb-2 justify-end">
+              <View className="items-end">
+                <Text className="text-sm font-semibold mb-1 text-gray-900">
+                  {message?.sender?.fullName || 'You'}
+                </Text>
+                <VoiceMessageBubble
+                  audioUri={audioUri}
+                  isMyMessage
+                  messageId={message.id}
+                  initialDurationSec={message.voiceDurationSec ?? null}
+                />
+                <Text className="text-xs text-gray-400 mt-1">
+                  {formatTime(message.createdAt)}
+                </Text>
+              </View>
+              <Image
+                source={{ uri: getProfileImage(message.sender) }}
+                className="w-10 h-10 rounded-full ml-2"
               />
-              <Text className="text-xs text-gray-400 mt-1">
-                {formatTime(message.createdAt)}
-              </Text>
             </View>
           )}
         </View>
@@ -1051,7 +1100,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               className="w-10 h-10 rounded-full mr-2"
             />
             <View>
-              <Text className="text-sm font-semibold mb-1">
+              <Text className="text-sm font-semibold mb-1 text-gray-900">
                 {message.sender.fullName || 'Unknown'}
               </Text>
               <View
@@ -1068,16 +1117,25 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         )}
 
         {isMyMessage && (
-          <View className="items-end">
-            <View
-              className={`bg-purple-600 rounded-2xl rounded-tr-sm max-w-[280px] ${showImage ? 'p-1 overflow-hidden' : 'px-4 py-3'
-                }`}
-            >
-              {bubbleContent}
+          <View className="flex-row items-start mb-2 justify-end">
+            <View className="items-end">
+              <Text className="text-sm font-semibold mb-1 text-gray-900">
+                {message?.sender?.fullName || 'You'}
+              </Text>
+              <View
+                className={`bg-purple-600 rounded-2xl rounded-tr-sm max-w-[280px] ${showImage ? 'p-1 overflow-hidden' : 'px-4 py-3'
+                  }`}
+              >
+                {bubbleContent}
+              </View>
+              <Text className="text-xs text-gray-400 mt-1">
+                {formatTime(message.createdAt)}
+              </Text>
             </View>
-            <Text className="text-xs text-gray-400 mt-1">
-              {formatTime(message.createdAt)}
-            </Text>
+            <Image
+              source={{ uri: getProfileImage(message.sender) }}
+              className="w-10 h-10 rounded-full ml-2"
+            />
           </View>
         )}
       </View>
@@ -1185,6 +1243,28 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }
   };
 
+  const [outgoingConsentVisible, setOutgoingConsentVisible] = useState(false);
+  const [outgoingConsentType, setOutgoingConsentType] = useState<
+    'audio' | 'video' | null
+  >(null);
+
+  const requestStartCall = (type: 'audio' | 'video') => {
+    setOutgoingConsentType(type);
+    setOutgoingConsentVisible(true);
+  };
+
+  const declineOutgoingConsent = () => {
+    setOutgoingConsentVisible(false);
+    setOutgoingConsentType(null);
+  };
+
+  const acceptOutgoingConsent = async () => {
+    const type = outgoingConsentType ?? 'audio';
+    setOutgoingConsentVisible(false);
+    setOutgoingConsentType(null);
+    await startCall(type);
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-white">
       <KeyboardAvoidingView
@@ -1228,19 +1308,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               <Image
                 source={{
                   uri: getProfileImage(
-                    otherUser || { profileImage: null, id: 0 },
+                    otherUserLive || { profileImage: null, id: 0 },
                   ),
                 }}
                 className="w-12 h-12 rounded-full mr-3"
               />
-              {otherUser?.isOnline && (
+              {otherUserLive?.isOnline && (
                 <View className="absolute right-3 bottom-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
               )}
             </View>
 
             <View className="flex-1">
               <Text className="text-lg font-bold">
-                {otherUser?.fullName || otherUser?.phoneNumber || 'Unknown'}
+                {otherUserLive?.fullName ||
+                  otherUserLive?.phoneNumber ||
+                  'Unknown'}
               </Text>
               <Text className="text-sm text-gray-500">{getLastSeenText()}</Text>
             </View>
@@ -1249,13 +1331,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           <View className="flex-row">
             <TouchableOpacity
               className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-2"
-              onPress={() => startCall('video')}
+              onPress={() => requestStartCall('video')}
             >
               <Video size={20} color="#000" />
             </TouchableOpacity>
             <TouchableOpacity
               className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
-              onPress={() => startCall('audio')}
+              onPress={() => requestStartCall('audio')}
             >
               <Phone size={20} color="#000" />
             </TouchableOpacity>
@@ -1394,6 +1476,23 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
             scrollToBottom={scrollToBottom}
           />
         </View>
+
+        <OutgoingCallConsentModal
+          visible={outgoingConsentVisible}
+          callType={outgoingConsentType ?? 'audio'}
+          calleeName={
+            otherUserLive?.fullName?.trim?.() ||
+            otherUserLive?.phoneNumber?.trim?.() ||
+            otherUser?.fullName?.trim?.() ||
+            otherUser?.phoneNumber?.trim?.() ||
+            'Contact'
+          }
+          calleeProfileImage={
+            otherUserLive?.profileImage ?? otherUser?.profileImage ?? null
+          }
+          onAccept={acceptOutgoingConsent}
+          onDecline={declineOutgoingConsent}
+        />
         {/* <SocketDebugOverlay chatId={chatId} /> */}
       </KeyboardAvoidingView>
     </SafeAreaView>

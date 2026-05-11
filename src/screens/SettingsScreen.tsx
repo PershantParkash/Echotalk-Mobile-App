@@ -20,6 +20,8 @@ import {
 } from 'lucide-react-native';
 import { RootStackParamList } from '../navigation/navigation';
 import { clearAllTokens } from '../utils/storage';
+import { store } from '../store';
+import { clearPresence } from '../store/presence/presence.actions';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -34,6 +36,7 @@ const SettingsScreen = () => {
   const handleLogout = async () => {
     try {
       await clearAllTokens();
+      store.dispatch(clearPresence());
 
       navigation.reset({
         index: 0,

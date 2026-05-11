@@ -35,7 +35,7 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js';
 type LoginScreenProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 export default function LoginComponent() {
-  const [countryCode, setCountryCode] = useState('92');
+  const [countryCode, setCountryCode] = useState('');
   const [countryIsoCode, setCountryIsoCode] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
