@@ -82,6 +82,7 @@ const CallScreen = () => {
   const [callSocketReady, setCallSocketReady] = useState(false);
   const answerEmittedRef = useRef(false);
   const lastCallerIdRef = useRef<string | null>(null);
+  const lastCallerInfoRef = useRef<{ fullName?: string | null; profileImage?: string | null }>({});
   const callEndHandledRef = useRef(false);
   const localVideoCaptureRef = useRef<any | null>(null);
   const remoteVideoCaptureRef = useRef<any | null>(null);
@@ -235,6 +236,10 @@ const CallScreen = () => {
       to: String(p.to),
     };
     lastCallerIdRef.current = String(p.from);
+    lastCallerInfoRef.current = {
+      fullName: p?.callerName ?? null,
+      profileImage: p?.callerProfileImage ? String(p.callerProfileImage) : null,
+    };
   }, [route.params?.answerIncoming, route.params?.callPayload]);
 
   /** Emit answer once the call socket is connected (after modal Answer). */
@@ -289,6 +294,10 @@ const CallScreen = () => {
       };
       if (data?.from != null) {
         lastCallerIdRef.current = String(data.from);
+        lastCallerInfoRef.current = {
+          fullName: data?.callerName ?? null,
+          profileImage: data?.callerProfileImage ? String(data.callerProfileImage) : null,
+        };
       }
     };
 
@@ -310,6 +319,10 @@ const CallScreen = () => {
       };
       if (data?.from != null) {
         lastCallerIdRef.current = String(data.from);
+        lastCallerInfoRef.current = {
+          fullName: data?.callerName ?? null,
+          profileImage: data?.callerProfileImage ? String(data.callerProfileImage) : null,
+        };
       }
     };
 
@@ -397,9 +410,10 @@ const CallScreen = () => {
       if (callEndHandledRef.current) return;
       callEndHandledRef.current = true;
       const callerId = lastCallerIdRef.current;
+      const callerInfo = { ...lastCallerInfoRef.current };
       await endLocally();
       if (callerId) {
-        fetchAndEmitCallMessage(callerId);
+        fetchAndEmitCallMessage(callerId, callerInfo);
       }
     };
 
@@ -586,10 +600,11 @@ const CallScreen = () => {
     if (callEndHandledRef.current) return;
     callEndHandledRef.current = true;
     const callerId = lastCallerIdRef.current;
+    const callerInfo = { ...lastCallerInfoRef.current };
     emitEndCall();
     await endLocally();
     if (callerId) {
-      setTimeout(() => fetchAndEmitCallMessage(callerId), 800);
+      setTimeout(() => fetchAndEmitCallMessage(callerId, callerInfo), 800);
     }
   };
 

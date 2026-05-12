@@ -27,6 +27,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import ChatSocketSingleton from '../utils/sockets/chat-socket';
 import { mergeUserWithPresence } from '../utils/presenceMerge';
+import { isChatAudioContent, isChatImageContent } from '../utils/chatMessages';
 
 interface ChatUser {
   id: number;
@@ -763,7 +764,11 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
                       )}
                     </View>
                     <Text className="text-gray-500 text-base" numberOfLines={1}>
-                      {chat.lastMessage?.content || 'No messages yet'}
+                      {isChatAudioContent(chat?.lastMessage?.content)
+                        ? 'Voice Message'
+                        : isChatImageContent(chat?.lastMessage?.content)
+                          ? 'Photo'
+                          : chat?.lastMessage?.content || 'No messages yet'}
                     </Text>
                   </View>
                 </TouchableOpacity>

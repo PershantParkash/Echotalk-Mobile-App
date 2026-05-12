@@ -8,7 +8,15 @@ export interface CallMessagePayload {
   message: any;
 }
 
-export const fetchAndEmitCallMessage = async (callerId: string | number) => {
+export interface CallerInfo {
+  fullName?: string | null;
+  profileImage?: string | null;
+}
+
+export const fetchAndEmitCallMessage = async (
+  callerId: string | number,
+  callerInfo?: CallerInfo,
+) => {
   try {
     const numericId = Number(callerId);
     const res = await axiosClient.get(
@@ -18,7 +26,14 @@ export const fetchAndEmitCallMessage = async (callerId: string | number) => {
     if (message) {
       const payload: CallMessagePayload = {
         callerId: numericId,
-        message: { ...message, sender: { id: numericId, ...message?.sender } },
+        message: {
+          ...message,
+          sender: {
+            id: numericId,
+            fullName: message?.sender?.fullName ?? callerInfo?.fullName ?? null,
+            profileImage: message?.sender?.profileImage ?? callerInfo?.profileImage ?? null,
+          },
+        },
       };
       DeviceEventEmitter.emit(CALL_MESSAGE_EVENT, payload);
     }

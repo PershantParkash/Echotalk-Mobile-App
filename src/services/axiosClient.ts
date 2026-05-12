@@ -1,7 +1,11 @@
 import axios from 'axios';
 import { getAccessToken, getRefreshToken, saveTokens } from '../utils/storage';
-import { NEXT_PUBLIC_API_URL } from '@env';
+// import { NEXT_PUBLIC_API_URL } from '@env';
 import { AuthEndpointsV1 } from './auth/constants';
+import CallSocketSingleton from '../utils/sockets/call-socket';
+import ChatSocketSingleton from '../utils/sockets/chat-socket';
+
+const NEXT_PUBLIC_API_URL = "http://10.10.10.68:5001/api"
 
 const axiosClient = axios.create({
   baseURL: NEXT_PUBLIC_API_URL,
@@ -41,7 +45,10 @@ axiosClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const isAuthEndpoint = originalRequest?.url?.includes('/auth/');
+    if (isAuthEndpoint) return Promise.reject(error);
+
+    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
@@ -69,16 +76,19 @@ axiosClient.interceptors.response.use(
           refreshToken,
         });
 
-        const { accessToken, refreshToken: newRefreshToken } = response.data;
+        const { accessToken: newAccessToken } = response.data;
+        const existingRefreshToken = await getRefreshToken();
+        if (!existingRefreshToken) throw new Error('Missing refresh token');
 
-        // Save new tokens
-        await saveTokens(accessToken, newRefreshToken);
-        notifyRefreshSubscribers(accessToken);
+        await saveTokens(newAccessToken, existingRefreshToken);
+        notifyRefreshSubscribers(newAccessToken);
         isRefreshing = false;
 
-        // Retry original request with new token
+        CallSocketSingleton.refreshAuth();
+        ChatSocketSingleton.refreshAuth();
+
         originalRequest.headers = originalRequest.headers ?? {};
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return axiosClient(originalRequest);
       } catch (refreshError) {
         // Refresh failed, user needs to login again

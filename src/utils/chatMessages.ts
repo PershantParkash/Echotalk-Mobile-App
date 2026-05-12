@@ -141,6 +141,7 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
     return prev;
   }
 
+  let matchedOptimistic: T | undefined;
   const cleared = prev.filter(m => {
     if (m.id >= 0) {
       return true;
@@ -149,6 +150,7 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
       return true;
     }
     if (m.content === incoming?.content) {
+      matchedOptimistic = matchedOptimistic ?? m;
       return false;
     }
     const inc = incoming?.content ?? '';
@@ -159,6 +161,7 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
         mc.startsWith('content://') ||
         mc.startsWith('ph://'))
     ) {
+      matchedOptimistic = matchedOptimistic ?? m;
       return false;
     }
     return true;
@@ -201,6 +204,13 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
       typeof incoming?.callSummary === 'string'
         ? incoming.callSummary
         : incoming?.callSummary ?? null,
+    voiceDurationSec: (() => {
+      const v = incoming?.voiceDurationSec;
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        return v;
+      }
+      return matchedOptimistic?.voiceDurationSec ?? null;
+    })(),
   } as T;
 
   return [...cleared, next];

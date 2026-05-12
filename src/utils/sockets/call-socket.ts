@@ -1,6 +1,8 @@
 import { io, Socket } from "socket.io-client";
 import { getAccessToken } from "../storage";
-import { NEXT_PUBLIC_API_BASE } from "@env";
+// import { NEXT_PUBLIC_API_BASE } from "@env";
+
+const NEXT_PUBLIC_API_BASE = "http://10.10.10.68:5001"
 
 class CallSocketSingleton {
   private static instance: Socket | null = null;

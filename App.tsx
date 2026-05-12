@@ -18,6 +18,7 @@ import {
 import { ensureAudioPermission, ensureVideoPermission } from './src/utils/permissions';
 import { setupIncomingCallPush } from './src/utils/incomingCallPush';
 import { getAccessToken } from './src/utils/storage';
+import { fetchAndEmitCallMessage } from './src/utils/callMessageBridge';
 import { clearPresence } from './src/store/presence/presence.actions';
 import PresenceSync from './src/components/PresenceSync';
 import useChatsService from './src/services/chat';
@@ -63,6 +64,11 @@ function AppWithCallSocket() {
   const chatSocketAttachedRef = useRef(false);
   const lastJoinedChatIdsKeyRef = useRef<string>('');
 
+  const incomingCallRef = useRef<IncomingCallPayload | null>(null);
+  useEffect(() => {
+    incomingCallRef.current = incomingCall;
+  }, [incomingCall]);
+
   const clearIncomingModal = useCallback(() => {
     setIncomingCall(null);
   }, []);
@@ -79,6 +85,11 @@ function AppWithCallSocket() {
     const payload = incomingCall;
     const timer = setTimeout(() => {
       // Best-effort: reject on the socket, always dismiss the modal.
+      const callerId = payload?.from;
+      const callerInfo = {
+        fullName: payload?.callerName ?? null,
+        profileImage: payload?.callerProfileImage ? String(payload.callerProfileImage) : null,
+      };
       CallSocketSingleton.connect?.()
         .then(sock => {
           sock?.emit?.('rejectCall', incomingCallToRejectPayload(payload));
@@ -100,6 +111,9 @@ function AppWithCallSocket() {
             }
             return null;
           });
+          if (callerId) {
+            setTimeout(() => fetchAndEmitCallMessage(String(callerId), callerInfo), 800);
+          }
         });
     }, 30_000);
 
@@ -287,12 +301,19 @@ function AppWithCallSocket() {
     };
 
     const onCallCancelled = (data?: { callLogId?: number }) => {
+      const pending = incomingCallRef.current;
       setIncomingCall(prev => {
         if (!incomingEventMatchesPendingCall(prev, data)) {
           return prev;
         }
         return null;
       });
+      if (pending?.from) {
+        fetchAndEmitCallMessage(String(pending.from), {
+          fullName: pending?.callerName ?? null,
+          profileImage: pending?.callerProfileImage ? String(pending.callerProfileImage) : null,
+        });
+      }
     };
 
     const onRejectCall = (data?: { callLogId?: number }) => {
@@ -367,6 +388,11 @@ function AppWithCallSocket() {
     if (!payload) {
       return;
     }
+    const callerId = payload?.from;
+    const callerInfo = {
+      fullName: payload?.callerName ?? null,
+      profileImage: payload?.callerProfileImage ? String(payload.callerProfileImage) : null,
+    };
     try {
       const sock = await CallSocketSingleton.connect();
       sock?.emit?.('rejectCall', incomingCallToRejectPayload(payload));
@@ -374,6 +400,9 @@ function AppWithCallSocket() {
       // still dismiss UI
     }
     clearIncomingModal();
+    if (callerId) {
+      setTimeout(() => fetchAndEmitCallMessage(String(callerId), callerInfo), 800);
+    }
   }, [incomingCall, clearIncomingModal]);
 
   const handleAnswerIncoming = useCallback(async () => {

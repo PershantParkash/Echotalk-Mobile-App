@@ -139,8 +139,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
   const scrollViewRef = useRef<ScrollView>(null);
   const loadingRef = useRef(false);
+  const isLoadingOlderRef = useRef(false);
+  const contentHeightRef = useRef(0);
+  const scrollOffsetRef = useRef(0);
+  const viewportHeightRef = useRef(0);
   const socketRef = useRef<any>(null);
   const initializedChatIdRef = useRef<number | null>(null);
+
+  console.log('socketRef', socketRef)
 
   const { getMessages, sendMessage } = useChatsService();
 
@@ -224,6 +230,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
         // Listen for new messages (same server event as web chat-and-talk-frontend)
         socket.on('newMessage', (message: any) => {
+          console.log('message received from socket:', message)
           if (message?.chat?.id !== chatId) {
             return;
           }
@@ -569,10 +576,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       const response = await sendMessage(chatId, audioUrl);
 
       setMessages(prev => {
+        const optimistic = prev.find(msg => msg.id === tempId);
         const filtered = prev.filter(msg => msg.id !== tempId);
         const responseExists = filtered.some(msg => msg.id === response?.id);
         if (!responseExists && response) {
-          return [...filtered, response];
+          const merged = {
+            ...response,
+            voiceDurationSec:
+              response?.voiceDurationSec ?? optimistic?.voiceDurationSec ?? dur,
+          };
+          return [...filtered, merged];
         }
         return filtered;
       });
@@ -619,7 +632,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               });
             });
           } else {
-            setMessages(prev => [...sortedMessages, ...prev]);
+            setMessages(prev => {
+              const existingIds = new Set(prev.map(m => m?.id));
+              const unique = sortedMessages.filter(
+                (m: Message) => !existingIds.has(m?.id),
+              );
+              return [...unique, ...prev];
+            });
           }
 
           setHasMore(response.data.length === 20);
@@ -629,6 +648,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       } finally {
         setLoading(false);
         loadingRef.current = false;
+        if (pageNum > 1) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              isLoadingOlderRef.current = false;
+            });
+          });
+        }
       }
     },
     [chatId, getMessages],
@@ -846,6 +872,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
   const handleLoadMore = () => {
     if (hasMore && !loading && !loadingRef.current) {
+      isLoadingOlderRef.current = true;
       const nextPage = page + 1;
       setPage(nextPage);
       fetchMessages(nextPage);
@@ -896,8 +923,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
   const groupMessagesByDate = () => {
     const grouped: { [key: string]: Message[] } = {};
+    const seen = new Set<number>();
 
     messages.forEach(message => {
+      if (seen.has(message?.id)) return;
+      seen.add(message?.id);
       const date = new Date(message.createdAt);
       const today = new Date();
       const yesterday = new Date(today);
@@ -1016,7 +1046,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           )}
           {isMyMessage && (
             <View className="flex-row items-start mb-2 justify-end">
-              <View className="items-end">
+              <View className="flex-1 min-w-0 max-w-[92%] items-end">
                 <Text className="text-sm font-semibold mb-1 text-gray-900">
                   {message?.sender?.fullName || 'You'}
                 </Text>
@@ -1360,13 +1390,38 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           ref={scrollViewRef}
           className="flex-1 px-4 py-4 mb-1"
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => {
+          onContentSizeChange={(_w, h) => {
+            if (isLoadingOlderRef.current) {
+              const delta = h - contentHeightRef.current;
+              contentHeightRef.current = h;
+              if (delta > 0) {
+                scrollOffsetRef.current += delta;
+                scrollViewRef.current?.scrollTo({
+                  y: scrollOffsetRef.current,
+                  animated: false,
+                });
+              }
+              return;
+            }
+            const prevHeight = contentHeightRef.current;
+            contentHeightRef.current = h;
             const phase = voiceUiPhaseRef.current;
             if (phase === 'recording' || phase === 'paused') {
               return;
             }
-            scrollToBottom();
+            const distanceFromBottom =
+              prevHeight - scrollOffsetRef.current - viewportHeightRef.current;
+            if (prevHeight === 0 || distanceFromBottom < 150) {
+              scrollToBottom();
+            }
           }}
+          onScroll={(e) => {
+            scrollOffsetRef.current = e?.nativeEvent?.contentOffset?.y ?? 0;
+          }}
+          onLayout={(e) => {
+            viewportHeightRef.current = e?.nativeEvent?.layout?.height ?? 0;
+          }}
+          scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
         >
           {loading && page === 1 ? (
