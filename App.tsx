@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import './global.css';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { store, RootState } from './src/store';
 import Toast from 'react-native-toast-message';
 import type { RootStackParamList } from './src/navigation/navigation';
 import IncomingCallModal from './src/components/call/IncomingCallModal';
+import OutgoingCallConsentModal from './src/components/call/OutgoingCallConsentModal';
 import { ensureAudioPermission, ensureVideoPermission } from './src/utils/permissions';
 import { setupIncomingCallPush } from './src/utils/incomingCallPush';
 import {
@@ -22,6 +23,7 @@ import {
 function AppWithCallSocket() {
   const dispatch = useDispatch();
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList> | null>(null);
+  const [incomingConsentVisible, setIncomingConsentVisible] = useState(false);
 
   const isAuthenticated = useSelector(
     (state: RootState) => state?.user?.isAuthenticated,
@@ -29,6 +31,12 @@ function AppWithCallSocket() {
   const incomingCall = useSelector(
     (state: RootState) => state?.incomingCall?.payload,
   );
+
+  useEffect(() => {
+    if (incomingCall == null) {
+      setIncomingConsentVisible(false);
+    }
+  }, [incomingCall]);
 
   // Connect/disconnect sockets based on auth state
   useEffect(() => {
@@ -58,12 +66,21 @@ function AppWithCallSocket() {
   }, []);
 
   const handleDeclineIncoming = useCallback(async () => {
+    setIncomingConsentVisible(false);
     if (!incomingCall) return;
     await declineIncomingCall(incomingCall);
   }, [incomingCall]);
 
+  const handleShowIncomingConsent = useCallback(() => {
+    if (incomingCall == null) {
+      return;
+    }
+    setIncomingConsentVisible(true);
+  }, [incomingCall]);
+
   const handleAnswerIncoming = useCallback(async () => {
     if (!incomingCall) return;
+    setIncomingConsentVisible(false);
 
     const needsVideo = incomingCall?.callType === 'video';
     const okAudio = await ensureAudioPermission();
@@ -100,9 +117,17 @@ function AppWithCallSocket() {
         <Toast />
       </NavigationContainer>
       <IncomingCallModal
-        visible={incomingCall != null}
+        visible={incomingCall != null && !incomingConsentVisible}
         payload={incomingCall}
-        onAnswer={handleAnswerIncoming}
+        onAnswer={handleShowIncomingConsent}
+        onDecline={handleDeclineIncoming}
+      />
+      <OutgoingCallConsentModal
+        visible={incomingConsentVisible && incomingCall != null}
+        callType={incomingCall?.callType === 'video' ? 'video' : 'audio'}
+        calleeName={incomingCall?.callerName?.trim?.() || 'Incoming call'}
+        calleeProfileImage={incomingCall?.callerProfileImage ?? null}
+        onAccept={handleAnswerIncoming}
         onDecline={handleDeclineIncoming}
       />
     </>
