@@ -40,6 +40,7 @@ const initialState: Types.UserReducerState = {
   currentStep: Types.RegisterSteps.AccountType,
   firebaseOtpVerificationId: "",
   forceCompleteProfile: false,
+  isAuthenticated: false,
 
   userDetails: {
     accountType: Types.AccountType.Individual,
@@ -139,10 +140,17 @@ export const userReducer = (state = initialState, action: Types.ActionType) => {
         firebaseOtpVerificationId: action.payload,
       };
 
+    case Types.SET_AUTHENTICATED:
+      return {
+        ...state,
+        isAuthenticated: !!action.payload,
+      };
+
     case Types.CLEAR_USER:
       return {
         ...state,
-        user: initialState.user, 
+        user: initialState.user,
+        isAuthenticated: false,
       };
 
     default:

@@ -17,11 +17,10 @@ import {
 } from 'react-native';
 import { Video, Phone, X } from 'lucide-react-native';
 import useChatsService from '../services/chat';
-import ChatSocketSingleton from '../utils/sockets/chat-socket';
-import CallSocketSingleton from '../utils/sockets/call-socket';
 // import SocketDebugOverlay from '../components/SocketDebugOverlay';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { useChatSocket, useCallSocket } from '../hooks/useSocket';
 import { mergeUserWithPresence } from '../utils/presenceMerge';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatMessageBar, {
@@ -42,6 +41,7 @@ import { voiceRecordingAudioSet } from '../utils/voiceRecordingConfig';
 import { ensureAudioPermission, ensureVideoPermission } from '../utils/permissions';
 import OutgoingCallConsentModal from '../components/call/OutgoingCallConsentModal';
 import { CALL_MESSAGE_EVENT, type CallMessagePayload } from '../utils/callMessageBridge';
+import { ensureCallSocketConnected } from '../utils/sockets/socketManager';
 
 interface Message {
   id: number;
@@ -143,16 +143,18 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const contentHeightRef = useRef(0);
   const scrollOffsetRef = useRef(0);
   const viewportHeightRef = useRef(0);
-  const socketRef = useRef<any>(null);
   const initializedChatIdRef = useRef<number | null>(null);
 
-  console.log('socketRef', socketRef)
+  const chatSocket = useChatSocket();
+  const callSocket = useCallSocket();
+  const chatSocketRef = useRef(chatSocket);
+  chatSocketRef.current = chatSocket;
 
   const { getMessages, sendMessage } = useChatsService();
 
   const emitRecordingStatus = useCallback(
     (isRecording: boolean) => {
-      const socket = socketRef.current;
+      const socket = chatSocketRef.current;
       const uid =
         typeof currentUserId === 'number'
           ? currentUserId
@@ -214,89 +216,57 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     [otherUser, presenceByUserId],
   );
 
-  // WebSocket connection effect
-  // WebSocket connection effect
+  // Screen-specific socket listeners (socket is managed globally by socketManager)
   useEffect(() => {
+    if (!chatSocket) return;
 
-    const initializeSocket = async () => {
-      try {
-        const socket = await ChatSocketSingleton.connect();
-        socketRef.current = socket;
+    chatSocket?.emit?.('joinAllChats', [chatId]);
 
-        socket.on('connect', () => {
-          // Join this specific chat room
-          socket.emit('joinAllChats', [chatId]);
-        });
-
-        // Listen for new messages (same server event as web chat-and-talk-frontend)
-        socket.on('newMessage', (message: any) => {
-          console.log('message received from socket:', message)
-          if (message?.chat?.id !== chatId) {
-            return;
-          }
-          setMessages(prev =>
-            mergeIncomingSocketMessage<Message>(prev, message),
-          );
-          setTimeout(() => scrollToBottom(), 100);
-        });
-
-        socket.on('userRecording', (payload: any) => {
-          if (payload?.chatId !== chatId) {
-            return;
-          }
-          const uid = payload?.userId;
-          const myId =
-            typeof currentUserId === 'number'
-              ? currentUserId
-              : userDetails?.id;
-          if (uid === myId) {
-            return;
-          }
-          const isRec = Boolean(payload?.isRecording);
-          const name =
-            typeof payload?.fullName === 'string'
-              ? payload.fullName
-              : 'Someone';
-          setRecordingUsers(prev => {
-            if (isRec) {
-              if (prev.some(u => u.userId === uid)) {
-                return prev;
-              }
-              return [...prev, { userId: uid, fullName: name }];
-            }
-            return prev.filter(u => u.userId !== uid);
-          });
-        });
-
-        socket.on('disconnect', () => {
-        });
-
-        socket.on('error', (_error: any) => {
-          // console.error('❌ Socket error:', error);
-        });
-      } catch {
-        // console.error('Failed to initialize socket:', error);
-        Alert.alert(
-          'Connection Error',
-          'Failed to connect to chat. Please try again.',
-        );
-      }
+    const onNewMessage = (message: any) => {
+      console.log('message received', message)
+      if (message?.chat?.id !== chatId) return;
+      setMessages(prev =>
+        mergeIncomingSocketMessage<Message>(prev, message),
+      );
+      setTimeout(() => scrollToBottom(), 100);
     };
 
-    initializeSocket();
+    const onUserRecording = (payload: any) => {
+      if (payload?.chatId !== chatId) return;
+      const uid = payload?.userId;
+      const myId =
+        typeof currentUserId === 'number'
+          ? currentUserId
+          : userDetails?.id;
+      if (uid === myId) return;
+      const isRec = Boolean(payload?.isRecording);
+      const name =
+        typeof payload?.fullName === 'string'
+          ? payload.fullName
+          : 'Someone';
+      setRecordingUsers(prev => {
+        if (isRec) {
+          if (prev.some(u => u.userId === uid)) return prev;
+          return [...prev, { userId: uid, fullName: name }];
+        }
+        return prev.filter(u => u.userId !== uid);
+      });
+    };
 
-    // Cleanup on unmount
+    const onReconnect = () => {
+      chatSocket?.emit?.('joinAllChats', [chatId]);
+    };
+
+    chatSocket?.on?.('newMessage', onNewMessage);
+    chatSocket?.on?.('userRecording', onUserRecording);
+    chatSocket?.on?.('connect', onReconnect);
+
     return () => {
-      if (socketRef.current) {
-        socketRef.current.off('newMessage');
-        socketRef.current.off('userRecording');
-        socketRef.current.off('connect');
-        socketRef.current.off('disconnect');
-        socketRef.current.off('error');
-      }
-      ChatSocketSingleton.disconnect();
+      chatSocket?.off?.('newMessage', onNewMessage);
+      chatSocket?.off?.('userRecording', onUserRecording);
+      chatSocket?.off?.('connect', onReconnect);
     };
-  }, [chatId, currentUserId, userDetails?.id]);
+  }, [chatSocket, chatId, currentUserId, userDetails?.id]);
 
   useEffect(() => {
     const chatUserIds = chat?.users?.map((u: ChatUser) => u?.id) ?? [];
@@ -1224,7 +1194,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         }
       }
 
-      const socket = await CallSocketSingleton.connect();
+      const socket = callSocket ?? (await ensureCallSocketConnected());
+      if (!socket?.connected) {
+        Alert.alert('Call error', 'Call service is not connected. Please try again.');
+        return;
+      }
       const fromId = currentUserId;
       const toId = otherUser.id;
       if (!fromId || !toId) {

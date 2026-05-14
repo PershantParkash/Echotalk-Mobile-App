@@ -21,10 +21,10 @@ import {
   VideoOff,
 } from 'lucide-react-native';
 import { RootStackParamList } from '../navigation/navigation';
-import CallSocketSingleton from '../utils/sockets/call-socket';
 import { fetchAndEmitCallMessage } from '../utils/callMessageBridge';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { useCallSocket } from '../hooks/useSocket';
 import createAgoraRtcEngine, {
   ChannelMediaOptions,
   ClientRoleType,
@@ -64,7 +64,9 @@ const CallScreen = () => {
   const [callType, setCallType] = useState<'audio' | 'video'>('audio');
   const [callLogId, setCallLogId] = useState<number | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
-  const socketRef = useRef<any>(null);
+  const callSocket = useCallSocket();
+  const callSocketRef = useRef(callSocket);
+  callSocketRef.current = callSocket;
   const engineRef = useRef<any | null>(null);
   const agoraListenersRef = useRef<{
     onUserJoined?: (connection: unknown, uid: number, elapsed: number) => void;
@@ -79,7 +81,6 @@ const CallScreen = () => {
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   /** True after Agora `joinChannel` succeeds (drives video UI; refs do not re-render). */
   const [mediaReady, setMediaReady] = useState(false);
-  const [callSocketReady, setCallSocketReady] = useState(false);
   const answerEmittedRef = useRef(false);
   const lastCallerIdRef = useRef<string | null>(null);
   const lastCallerInfoRef = useRef<{ fullName?: string | null; profileImage?: string | null }>({});
@@ -164,45 +165,6 @@ const CallScreen = () => {
     navigation?.goBack?.();
   }, [navigation, resetLocalCallState]);
 
-  useEffect(() => {
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const connectWithRetry = async () => {
-      const delaysMs = [0, 800, 1600, 3200];
-      for (let i = 0; i < delaysMs.length; i++) {
-        const delay = delaysMs[i] ?? 0;
-        if (delay > 0) {
-          await new Promise<void>((r) => {
-            retryTimer = setTimeout(() => r(), delay);
-          });
-        }
-        if (cancelled) return;
-        try {
-          const s = await CallSocketSingleton.connect();
-          if (cancelled) return;
-          socketRef.current = s;
-          setCallSocketReady(true);
-          return;
-        } catch {
-          // retry
-        }
-      }
-      if (!cancelled) {
-        Alert.alert('Call error', 'Unable to connect call socket.');
-      }
-    };
-
-    connectWithRetry();
-
-    return () => {
-      cancelled = true;
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-      }
-    };
-  }, []);
-
   /** Hydrate from navigation when answering from IncomingCallModal / push. */
   useEffect(() => {
     const p = route.params?.callPayload;
@@ -246,16 +208,12 @@ const CallScreen = () => {
   useEffect(() => {
     const should = route.params?.answerIncoming === true;
     const p = route.params?.callPayload;
-    if (!should || !p?.from || !p?.to || !callSocketReady || answerEmittedRef.current) {
-      return;
-    }
-    const sock = socketRef.current ?? CallSocketSingleton.getInstance();
-    if (!sock?.emit) {
+    if (!should || !p?.from || !p?.to || !callSocket || answerEmittedRef.current) {
       return;
     }
     answerEmittedRef.current = true;
-    sock.emit?.('answerCall', incomingCallToAnswerPayload(p));
-  }, [callSocketReady, route.params?.answerIncoming, route.params?.callPayload]);
+    callSocket?.emit?.('answerCall', incomingCallToAnswerPayload(p));
+  }, [callSocket, route.params?.answerIncoming, route.params?.callPayload]);
 
   useEffect(() => {
     return () => {
@@ -264,13 +222,8 @@ const CallScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (!callSocketReady) {
-      return;
-    }
-    const socket = socketRef.current ?? CallSocketSingleton.getInstance();
-    if (!socket) {
-      return;
-    }
+    if (!callSocket) return;
+    const socket = callSocket;
 
     const handleCallInitiated = (data: any) => {
       if (data?.roomName != null) setRoomName(String(data.roomName));
@@ -434,7 +387,7 @@ const CallScreen = () => {
             text: 'Decline',
             style: 'cancel',
             onPress: () => {
-              const socketLocal = socketRef.current;
+              const socketLocal = callSocketRef.current;
               if (!socketLocal) return;
               socketLocal.emit?.('denyVideoCall', {
                 requestedFrom: String(data?.requestedFrom ?? ''),
@@ -448,7 +401,7 @@ const CallScreen = () => {
           {
             text: 'Accept',
             onPress: async () => {
-              const socketLocal = socketRef.current;
+              const socketLocal = callSocketRef.current;
               if (!socketLocal) return;
               socketLocal.emit?.('acceptVideoCall', {
                 requestedFrom: String(data?.requestedFrom ?? ''),
@@ -528,10 +481,10 @@ const CallScreen = () => {
       socket.off?.('videoCallDenied', handleVideoCallDenied);
       socket.off?.('userStatusChanged', handleUserStatusChanged);
     };
-  }, [callSocketReady, callType, roomName, userDetails?.id, endLocally, callStatus]);
+  }, [callSocket, callType, roomName, userDetails?.id, endLocally, callStatus]);
 
   const emitEndCall = () => {
-    const socket = socketRef.current;
+    const socket = callSocketRef.current;
     if (!socket || !roomName || !startTime || !userDetails?.id) {
       return;
     }
@@ -617,7 +570,7 @@ const CallScreen = () => {
 
   const toggleVideo = () => {
     const next = !videoOn;
-    const socket = socketRef.current;
+    const socket = callSocketRef.current;
 
     if (!socket || !peerIdsRef.current || !userDetails?.id || !roomName) {
       return;

@@ -1,11 +1,11 @@
 import axios from 'axios';
 import { getAccessToken, getRefreshToken, saveTokens } from '../utils/storage';
-// import { NEXT_PUBLIC_API_URL } from '@env';
+import { NEXT_PUBLIC_API_URL } from '@env';
 import { AuthEndpointsV1 } from './auth/constants';
 import CallSocketSingleton from '../utils/sockets/call-socket';
 import ChatSocketSingleton from '../utils/sockets/chat-socket';
 
-const NEXT_PUBLIC_API_URL = "http://10.10.10.68:5001/api"
+// const NEXT_PUBLIC_API_URL = "http://10.10.10.68:5001/api"
 
 const axiosClient = axios.create({
   baseURL: NEXT_PUBLIC_API_URL,

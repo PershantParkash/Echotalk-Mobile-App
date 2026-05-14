@@ -9,6 +9,7 @@ import useUsersService from '../services/user';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
 import {
+  setAuthenticated,
   setCurrentStep,
   setForceCompleteProfile,
   setUpdateAppUser,
@@ -46,6 +47,7 @@ export default function SplashComponent() {
           const token = await getAccessToken();
 
           if (token?.trim()) {
+            dispatch(setAuthenticated(true));
             try {
               const details = await getUserDetails();
               dispatch(setUserDetails(details));

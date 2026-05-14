@@ -23,6 +23,7 @@ import useUsersService from '../../services/user';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../../store';
 import {
+  setAuthenticated,
   setCurrentStep,
   setForceCompleteProfile,
   setUpdateAppUser,
@@ -38,7 +39,7 @@ export default function LoginComponent() {
   const [countryCode, setCountryCode] = useState('92');
   const [countryIsoCode, setCountryIsoCode] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [password, setPassword] = useState('pass123');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{
     phoneNumber?: string;
@@ -95,6 +96,7 @@ export default function LoginComponent() {
       });
       if (response) {
         await saveTokens(response.accessToken, response.refreshToken);
+        dispatch(setAuthenticated(true));
 
         Toast.show({
           type: 'success',
