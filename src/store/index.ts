@@ -1,11 +1,19 @@
-import { createStore, combineReducers } from 'redux';
+import { configureStore } from '@reduxjs/toolkit';
 import { userReducer } from './user/user.reducer';
+import { presenceReducer } from './presence/presence.reducer';
+import socketReducer from './socket/socketSlice';
+import conversationsReducer from './conversations/conversationsSlice';
+import incomingCallReducer from './incomingCall/incomingCallSlice';
 
-const rootReducer = combineReducers({
-  user: userReducer,
+export const store = configureStore({
+  reducer: {
+    user: userReducer,
+    presence: presenceReducer,
+    socket: socketReducer,
+    conversations: conversationsReducer,
+    incomingCall: incomingCallReducer,
+  },
 });
 
-export const store = createStore(rootReducer);
-
-export type RootState = ReturnType<typeof rootReducer>;
+export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

@@ -124,7 +124,7 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
         mediaType: 'photo',
       });
 
-      console.log('image', image)
+      // console.log('image', image)
 
       const localUri = image?.path?.trim?.() ?? '';
       if (!localUri?.length) {
@@ -143,8 +143,6 @@ const PersonalDetails = ({ forceComplete = false }: PersonalDetailsProps) => {
         fileSize: typeof image?.size === 'number' ? image.size : null,
       });
     } catch (error: any) {
-      console.log('error', error)
-      console.log('error', error)
       const code = error?.code ?? '';
       if (code === 'E_PICKER_CANCELLED') return;
 

@@ -12,6 +12,22 @@ export interface ChatMessageShape {
   callDuration?: number | null;
   callSummary?: string | null;
   voiceDurationSec?: number | null;
+  status?: 'sent' | 'delivered' | 'read';
+  isEdited?: boolean;
+  editedAt?: string | null;
+  isDeleted?: boolean;
+  deletedFor?: number[];
+  isPinned?: boolean;
+  pinnedBy?: number[];
+  reactions?: Array<{
+    id: number;
+    emoji: string;
+    user: {
+      id: number;
+      fullName: string | null;
+      profileImage?: string | null;
+    };
+  }>;
 }
 
 /**
@@ -141,6 +157,7 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
     return prev;
   }
 
+  let matchedOptimistic: T | undefined;
   const cleared = prev.filter(m => {
     if (m.id >= 0) {
       return true;
@@ -149,6 +166,7 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
       return true;
     }
     if (m.content === incoming?.content) {
+      matchedOptimistic = matchedOptimistic ?? m;
       return false;
     }
     const inc = incoming?.content ?? '';
@@ -159,6 +177,7 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
         mc.startsWith('content://') ||
         mc.startsWith('ph://'))
     ) {
+      matchedOptimistic = matchedOptimistic ?? m;
       return false;
     }
     return true;
@@ -178,6 +197,12 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
     id: mid,
     content: incoming?.content ?? '',
     createdAt,
+    status:
+      incoming?.status === 'read' ||
+      incoming?.status === 'delivered' ||
+      incoming?.status === 'sent'
+        ? incoming.status
+        : undefined,
     sender: {
       id: incoming?.sender?.id ?? 0,
       fullName: incoming?.sender?.fullName ?? null,
@@ -201,6 +226,45 @@ export const mergeIncomingSocketMessage = <T extends ChatMessageShape>(
       typeof incoming?.callSummary === 'string'
         ? incoming.callSummary
         : incoming?.callSummary ?? null,
+    isEdited: Boolean(incoming?.isEdited),
+    editedAt:
+      typeof incoming?.editedAt === 'string'
+        ? incoming.editedAt
+        : incoming?.editedAt instanceof Date
+          ? incoming.editedAt.toISOString()
+          : null,
+    isDeleted: Boolean(incoming?.isDeleted),
+    deletedFor: Array.isArray(incoming?.deletedFor)
+      ? incoming.deletedFor
+          ?.map?.((value: unknown) => Number(value))
+          ?.filter?.((value: number) => Number.isFinite(value))
+      : [],
+    isPinned: Boolean(incoming?.isPinned),
+    pinnedBy: Array.isArray(incoming?.pinnedBy)
+      ? incoming.pinnedBy
+          ?.map?.((value: unknown) => Number(value))
+          ?.filter?.((value: number) => Number.isFinite(value))
+      : [],
+    reactions: Array.isArray(incoming?.reactions)
+      ? incoming.reactions
+          ?.map?.((reaction: any) => ({
+            id: Number(reaction?.id ?? 0),
+            emoji: reaction?.emoji ?? '',
+            user: {
+              id: Number(reaction?.user?.id ?? 0),
+              fullName: reaction?.user?.fullName ?? null,
+              profileImage: reaction?.user?.profileImage ?? null,
+            },
+          }))
+          ?.filter?.((reaction: { id: number; emoji: string }) => reaction?.id > 0)
+      : [],
+    voiceDurationSec: (() => {
+      const v = incoming?.voiceDurationSec;
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        return v;
+      }
+      return matchedOptimistic?.voiceDurationSec ?? null;
+    })(),
   } as T;
 
   return [...cleared, next];

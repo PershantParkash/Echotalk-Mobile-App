@@ -48,3 +48,8 @@ export const setForceCompleteProfile = (payload: boolean) => ({
   type: Types.SET_FORCE_COMPLETE_PROFILE,
   payload,
 });
+
+export const setAuthenticated = (payload: boolean) => ({
+  type: Types.SET_AUTHENTICATED,
+  payload,
+});

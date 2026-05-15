@@ -50,6 +50,47 @@ const useChatsService = () => {
     });
   };
 
+  const editMessage = async (messageId: number, content: string) => {
+    return await callApi({
+      method: 'patch',
+      url: ChatsEndpointsV1.editMessage(messageId),
+      data: { content },
+    });
+  };
+
+  const deleteMessage = async (
+    messageId: number,
+    deleteFor: 'me' | 'everyone',
+  ) => {
+    return await callApi({
+      method: 'delete',
+      url: ChatsEndpointsV1.deleteMessage(messageId),
+      data: { deleteFor },
+    });
+  };
+
+  const getPinnedMessages = async (chatId: number) => {
+    return await callApi({
+      method: 'get',
+      url: ChatsEndpointsV1.getPinnedMessages(chatId),
+    });
+  };
+
+  const pinMessage = async (chatId: number, messageId: number) => {
+    return await callApi({
+      method: 'post',
+      url: ChatsEndpointsV1.pinMessage(chatId, messageId),
+    });
+  };
+
+  const reactToMessage = async (messageId: number, emoji: string) => {
+    return await callApi({
+      method: 'post',
+      url: ChatsEndpointsV1.reactToMessage(messageId),
+      data: { emoji },
+    });
+  };
+
   return {
     getChats,
     createIndividualChat,
@@ -57,6 +98,11 @@ const useChatsService = () => {
     getMessages,
     getMessageBySenderId,
     sendMessage,
+    editMessage,
+    deleteMessage,
+    getPinnedMessages,
+    pinMessage,
+    reactToMessage,
     loading,
     error,
   };

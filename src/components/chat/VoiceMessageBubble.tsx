@@ -6,9 +6,83 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import audioRecorderPlayer from '../../utils/audioRecorderPlayer';
 import { Play, Pause } from 'lucide-react-native';
 import { VOICE_MESSAGE_PURPLE } from '../../utils/voiceRecordingConfig';
+
+/* ── Silent duration probe ───────────────────────────────────────────── */
+const durationProber = new AudioRecorderPlayer();
+let probeInFlight = false;
+const durationCache = new Map<string, number>();
+const probeQueue: Array<{ uri: string; resolve: (ms: number) => void }> = [];
+
+const drainProbeQueue = async () => {
+  if (probeInFlight || probeQueue.length === 0) {
+    return;
+  }
+  probeInFlight = true;
+  const item = probeQueue.shift()!;
+  const { uri, resolve } = item;
+
+  const cached = durationCache.get(uri);
+  if (cached != null && cached > 0) {
+    resolve(cached);
+    probeInFlight = false;
+    drainProbeQueue();
+    return;
+  }
+
+  let resolved = false;
+  const finish = (ms: number) => {
+    if (resolved) {
+      return;
+    }
+    resolved = true;
+    if (ms > 0) {
+      durationCache.set(uri, ms);
+    }
+    durationProber.stopPlayer().catch(() => {});
+    durationProber.removePlayBackListener();
+    resolve(ms);
+    probeInFlight = false;
+    drainProbeQueue();
+  };
+
+  const timeout = setTimeout(() => finish(0), 4000);
+
+  try {
+    await durationProber.stopPlayer().catch(() => {});
+    durationProber.removePlayBackListener();
+    await durationProber.setVolume(0).catch(() => {});
+
+    durationProber.addPlayBackListener(e => {
+      const d = e?.duration ?? 0;
+      if (d > 0) {
+        clearTimeout(timeout);
+        finish(d);
+      }
+    });
+
+    await durationProber.startPlayer(uri);
+    await durationProber.setVolume(0).catch(() => {});
+  } catch {
+    clearTimeout(timeout);
+    finish(0);
+  }
+};
+
+const probeAudioDurationMs = (uri: string): Promise<number> => {
+  const cached = durationCache.get(uri);
+  if (cached != null && cached > 0) {
+    return Promise.resolve(cached);
+  }
+  return new Promise<number>(resolve => {
+    probeQueue.push({ uri, resolve });
+    drainProbeQueue();
+  });
+};
+/* ───────────────────────────────────────────────────────────────────── */
 
 const BAR_COUNT = 18;
 
@@ -141,6 +215,27 @@ const VoiceMessageBubble: React.FC<VoiceMessageBubbleProps> = ({
       stopLocal().catch(() => {});
     };
   }, [stopLocal]);
+
+  useEffect(() => {
+    if (durationMs > 0) {
+      return;
+    }
+    const uri = uriRef.current?.trim?.() ?? '';
+    if (!uri?.length) {
+      return;
+    }
+    let cancelled = false;
+    probeAudioDurationMs(uri).then(ms => {
+      if (!cancelled && ms > 0) {
+        setDurationMs(ms);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Only run once on mount (or when audioUri changes); not when durationMs updates
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioUri]);
 
   const totalMs = durationMs > 0 ? durationMs : 1;
   const progress = Math.min(1, Math.max(0, positionMs / totalMs));

@@ -2,6 +2,8 @@ import { io, Socket } from "socket.io-client";
 import { getAccessToken } from "../storage";
 import { NEXT_PUBLIC_API_BASE } from "@env";
 
+// const NEXT_PUBLIC_API_BASE = "http://10.10.10.68:5001"
+
 class ChatSocketSingleton {
   private static instance: Socket | null = null;
   private static currentToken: string | null = null;
@@ -83,8 +85,9 @@ class ChatSocketSingleton {
       auth: { token },
       transports: ["polling", "websocket"],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
       timeout: 20000,
       forceNew: false,
     });
@@ -155,12 +158,24 @@ class ChatSocketSingleton {
     ChatSocketSingleton.currentToken = newToken;
     socket.auth = { token: newToken };
 
-    if (socket?.connected) {
-      socket.emit?.("refresh-auth", { token: newToken });
-    } else {
-      (socket as any).io.opts.query = { token: newToken };
-      socket.connect?.();
-    }
+    // The backend reads the token from client.handshake.query.token which is
+    // immutable after the initial handshake. A full reconnect is required so
+    // the new token is sent as part of a fresh handshake.
+    (socket as any).io.opts.query = { token: newToken };
+    socket.disconnect?.();
+    socket.connect?.();
+  }
+
+  public static refreshAuth(): void {
+    const socket = ChatSocketSingleton.instance;
+    if (!socket) return;
+    getAccessToken()
+      .then((t) => {
+        if (t && t !== ChatSocketSingleton.currentToken) {
+          ChatSocketSingleton.updateAuthentication(t);
+        }
+      })
+      .catch(() => { });
   }
 
   public static disconnect(): void {

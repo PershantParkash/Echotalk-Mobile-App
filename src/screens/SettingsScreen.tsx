@@ -20,6 +20,9 @@ import {
 } from 'lucide-react-native';
 import { RootStackParamList } from '../navigation/navigation';
 import { clearAllTokens } from '../utils/storage';
+import { store } from '../store';
+import { setAuthenticated } from '../store/user/user.actions';
+import { disconnectAllSockets } from '../utils/sockets/socketManager';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -33,6 +36,8 @@ const SettingsScreen = () => {
 
   const handleLogout = async () => {
     try {
+      disconnectAllSockets(store.dispatch);
+      store.dispatch(setAuthenticated(false));
       await clearAllTokens();
 
       navigation.reset({

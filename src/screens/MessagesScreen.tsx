@@ -23,9 +23,16 @@ import Contacts from 'react-native-contacts';
 import NewContactModal from '../components/chat/NewContactModal';
 import ContactsDrawer from '../components/chat/ContactsDrawer';
 import useContactsService from '../services/contacts';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
-import ChatSocketSingleton from '../utils/sockets/chat-socket';
+import { mergeUserWithPresence } from '../utils/presenceMerge';
+import { isChatAudioContent, isChatImageContent } from '../utils/chatMessages';
+import {
+  setConversations,
+  addConversation,
+  type Conversation,
+} from '../store/conversations/conversationsSlice';
+import { joinAllChatRooms } from '../utils/sockets/socketManager';
 
 interface ChatUser {
   id: number;
@@ -35,6 +42,7 @@ interface ChatUser {
   profileImage: string | null;
   contactName: { name: string } | null;
   isOnline: boolean;
+  lastSeenAt?: string;
 }
 interface LastMessage {
   id: number;
@@ -96,9 +104,7 @@ const shouldBlockDuplicateInitiation = (isInitiating: boolean): boolean => {
 const MessagesScreen: React.FC<MessagesScreenProps> = ({
   navigation,
 }) => {
-  // All hooks must be at the top level - this is critical!
-  const [conversations, setConversations] = useState<Chat[]>([]);
-  const [onlineContacts, setOnlineContacts] = useState<ChatUser[]>([]);
+  const dispatch = useDispatch();
   const [isInitiatingChat, setIsInitiatingChat] = useState(false);
   const latestInitiationTokenRef = useRef(0);
   const [refreshingConversations, setRefreshingConversations] = useState(false);
@@ -112,7 +118,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   const [isContactsDrawerVisible, setIsContactsDrawerVisible] = useState(false);
   const [savedContactsRefreshToken, setSavedContactsRefreshToken] = useState(0);
   const { createContact } = useContactsService();
-  const connectPresenceInFlightRef = useRef(false);
 
   const [contactsSearchQuery, setContactsSearchQuery] = useState('');
   const [isAddContactModalVisible, setIsAddContactModalVisible] = useState(false);
@@ -148,60 +153,51 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
   } = useChatsService();
   const { userDetails } = useSelector((state: RootState) => state.user);
   const currentUserId = userDetails?.id;
-
-  const ensureChatPresenceConnected = async () => {
-    if (connectPresenceInFlightRef?.current) return;
-    connectPresenceInFlightRef.current = true;
-    try {
-      if (!ChatSocketSingleton?.isConnected?.()) {
-        await ChatSocketSingleton?.connect?.();
-      }
-    } catch {
-      // Presence is best-effort; we'll still refresh chats below.
-    } finally {
-      connectPresenceInFlightRef.current = false;
-    }
-  };
-
-  useEffect(() => {
-    fetchChats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      // When navigating back to Messages, make sure chat socket is connected
-      // so online status (green dot + online contacts) has a chance to update.
-      void (async () => {
-        await ensureChatPresenceConnected?.();
-        await fetchChats?.();
-      })?.();
-
-      return () => { };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentUserId])
+  const presenceByUserId = useSelector(
+    (state: RootState) => state.presence?.byUserId,
   );
+
+  // Read conversations from Redux store (sorted by latest message)
+  const conversations = useSelector(
+    (state: RootState) => state?.conversations?.list ?? [],
+  ) as Chat[];
+  const conversationsLoading = useSelector(
+    (state: RootState) => state?.conversations?.isLoading,
+  );
+
+  const conversationsWithPresence = useMemo(() => {
+    return (
+      conversations?.map((chat) => ({
+        ...chat,
+        users:
+          chat?.users?.map(
+            (u) => mergeUserWithPresence(u, presenceByUserId) ?? u,
+          ) ?? [],
+      })) ?? []
+    );
+  }, [conversations, presenceByUserId]);
+
+  const onlineContacts = useMemo(() => {
+    const allUsers =
+      conversationsWithPresence?.flatMap?.((c) => c?.users ?? []) ?? [];
+    return allUsers
+      .filter((user: ChatUser) => {
+        if (typeof currentUserId === 'number') {
+          return user?.id !== currentUserId && user?.isOnline;
+        }
+        return user?.isOnline;
+      })
+      .filter(
+        (user: ChatUser, index: number, self: ChatUser[]) =>
+          self.findIndex((u) => u.id === user.id) === index,
+      )
+      .slice(0, 5);
+  }, [conversationsWithPresence, currentUserId]);
 
   const fetchChats = async () => {
     try {
       const chats = await getChats();
-      setConversations(chats ?? []);
-
-      // Extract online contacts from all chats (excluding current user)
-      const allUsers = (chats ?? [])?.flatMap?.((chat: Chat) => chat?.users ?? []) ?? [];
-      const uniqueOnlineUsers = allUsers
-        .filter((user: ChatUser) => {
-          if (typeof currentUserId === 'number') {
-            return user?.id !== currentUserId && user?.isOnline;
-          }
-          return user?.isOnline;
-        })
-        .filter((user: ChatUser, index: number, self: ChatUser[]) =>
-          self.findIndex(u => u.id === user.id) === index
-        )
-        .slice(0, 5); // Limit to 5 contacts
-
-      setOnlineContacts(uniqueOnlineUsers);
+      dispatch(setConversations(chats ?? []));
     } catch {
       // console.error('Error fetching chats:', error);
     } finally {
@@ -209,10 +205,28 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (conversations?.length === 0) {
+      fetchChats();
+    } else {
+      setInitialChatsLoadDone(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void fetchChats?.();
+      return () => { };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUserId])
+  );
+
   const onPullDownRefresh = async () => {
     setRefreshingConversations(true);
     try {
       await fetchChats?.();
+      await joinAllChatRooms();
     } finally {
       setRefreshingConversations(false);
     }
@@ -248,7 +262,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     wasPullingPastBottomRef.current = pullingPastBottom;
   };
 
-  // Helper function to get the other user in a conversation
   const getOtherUser = (chat: Chat): ChatUser | null => {
     if (typeof currentUserId === 'number') {
       return chat?.users?.find?.(user => user?.id !== currentUserId) || null;
@@ -257,14 +270,12 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     return chat?.users?.length === 1 ? (chat?.users?.[0] ?? null) : null;
   };
 
-  // Helper function to format time
   const formatTime = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
 
     if (diffInHours < 24) {
-      // Show time for messages from today
       return date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
@@ -273,10 +284,8 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     } else if (diffInHours < 48) {
       return 'Yesterday';
     } else if (diffInHours < 168) {
-      // Show day of week for messages within a week
       return date.toLocaleDateString('en-US', { weekday: 'short' });
     } else {
-      // Show date for older messages
       return date.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric'
@@ -284,35 +293,39 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     }
   };
 
-  // Helper function to get display name
   const getDisplayName = (user: ChatUser): string => {
     if (user.contactName?.name) return user.contactName.name;
     if (user.fullName) return user.fullName;
     return user.phoneNumber;
   };
 
-  // Helper function to get profile image
   const getProfileImage = (user: ChatUser): string => {
     if (user.profileImage) return user.profileImage;
-    // Generate a random avatar based on user ID
     return `https://i.pravatar.cc/150?img=${user.id + 10}`;
   };
 
   const handleChatPress = (chat: Chat) => {
-    // Navigate to chat detail screen
-    if (navigation?.navigate) {
-      navigation.navigate('ChatScreen', {
-        chatId: chat.id,
-        chat: chat,
-        currentUserId,
-      });
+    if (!navigation?.navigate) {
+      return;
     }
+    const merged =
+      conversationsWithPresence?.find?.((c) => c?.id === chat?.id) ?? chat;
+    navigation.navigate('ChatScreen', {
+      chatId: merged.id,
+      chat: merged,
+      currentUserId,
+    });
   };
 
   const openSelectedChat = (chat: Chat, initialMessages: any[]) => {
+    const mergedUsers =
+      chat?.users?.map(
+        (u) => mergeUserWithPresence(u, presenceByUserId) ?? u,
+      ) ?? [];
+    const mergedChat = { ...chat, users: mergedUsers };
     navigation?.navigate?.('ChatScreen', {
-      chatId: chat?.id,
-      chat,
+      chatId: mergedChat?.id,
+      chat: mergedChat,
       currentUserId,
       initialMessages,
     });
@@ -361,14 +374,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
         throw new Error('Unable to create chat');
       }
 
-      setConversations((prev) => {
-        const list = prev ?? [];
-        const hasCreatedChat = list?.some?.(
-          (chat) => String(chat?.id ?? '') === String(createdChat?.id ?? ''),
-        );
-        if (hasCreatedChat) return list;
-        return [createdChat, ...list];
-      });
+      dispatch(addConversation(createdChat as unknown as Conversation));
 
       const createdMessagesResponse = await getMessages?.(
         Number(createdChat?.id),
@@ -431,11 +437,8 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
 
       const current = await Contacts.checkPermission();
       if (current === 'authorized') return 'authorized';
-
-      // iOS can return "limited" (still usable for reading contacts)
       if (current === 'limited') return 'authorized';
 
-      // If it's undefined or denied, we should request on user action.
       if (current === 'undefined' || current === 'denied') {
         const requested = await Contacts.requestPermission();
         if (requested === 'limited') return 'authorized';
@@ -446,7 +449,6 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
       if (requested === 'limited') return 'authorized';
       return requested ?? 'denied';
     } catch {
-      // console.error('Contacts permission error:', error);
       return 'denied';
     }
   };
@@ -605,7 +607,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
     }
   };
 
-  if (chatsLoading && !initialChatsLoadDone) {
+  if ((chatsLoading || conversationsLoading) && !initialChatsLoadDone) {
     return (
       <View className="flex-1 bg-white items-center justify-center">
         <ActivityIndicator size="large" color="#000" />
@@ -688,7 +690,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
 
         {/* Messages List */}
         <View className="px-6 py-2 flex-1">
-          {conversations.length === 0 ? (
+          {conversationsWithPresence.length === 0 ? (
             <View className="flex-1 items-center justify-center py-12">
               <Text className="text-[#092724] text-xl font-semibold">
                 No conversations yet
@@ -708,7 +710,7 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
               </TouchableOpacity>
             </View>
           ) : (
-            conversations.map((chat) => {
+            conversationsWithPresence.map((chat) => {
               const otherUser = getOtherUser(chat);
               if (!otherUser) return null;
 
@@ -739,7 +741,11 @@ const MessagesScreen: React.FC<MessagesScreenProps> = ({
                       )}
                     </View>
                     <Text className="text-gray-500 text-base" numberOfLines={1}>
-                      {chat.lastMessage?.content || 'No messages yet'}
+                      {isChatAudioContent(chat?.lastMessage?.content)
+                        ? 'Voice Message'
+                        : isChatImageContent(chat?.lastMessage?.content)
+                          ? 'Photo'
+                          : chat?.lastMessage?.content || 'No messages yet'}
                     </Text>
                   </View>
                 </TouchableOpacity>

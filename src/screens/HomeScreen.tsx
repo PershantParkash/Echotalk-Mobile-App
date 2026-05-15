@@ -29,6 +29,8 @@ import { TabParamList } from '../navigation/navigation';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { clearAllTokens } from '../utils/storage';
+import { store } from '../store';
+import { clearPresence } from '../store/presence/presence.actions';
 
 type HomeScreenNavigationProp = BottomTabNavigationProp<
   TabParamList,
@@ -55,7 +57,7 @@ const DEFAULT_IMAGE =
 const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '');
 
 const Header: React.FC = () => {
-  const { userDetails, user, firebaseOtpVerificationId } = useSelector(
+  const { userDetails } = useSelector(
     (state: RootState) => state.user,
   );
   return (
@@ -140,8 +142,8 @@ const ContinueCourseCard: React.FC<{ course: Course | null }> = ({
 }) => {
   if (!course) return null;
 
-  const imageUri =
-    course.image || course.thumbnail || course.coverImage || DEFAULT_IMAGE;
+  // const imageUri =
+  //   course.image || course.thumbnail || course.coverImage || DEFAULT_IMAGE;
   const author = course.author || course.instructor || 'Unknown Instructor';
 
   return (
@@ -388,17 +390,11 @@ const SectionHeader: React.FC<{
 }> = ({ title, onSeeAll }) => {
   return (
     <View
-      style={{
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 16,
-        marginHorizontal: 16,
-      }}
+      style={styles.sectionHeader}
     >
-      <Text style={{ fontSize: 20, fontWeight: 'bold' }}>{title}</Text>
+      <Text style={styles.sectionHeaderTitle}>{title}</Text>
       <TouchableOpacity onPress={onSeeAll}>
-        <Text style={{ color: '#7c3aed', fontWeight: '600' }}>See all</Text>
+        <Text style={styles.sectionHeaderSeeAll}>See all</Text>
       </TouchableOpacity>
     </View>
   );
@@ -468,7 +464,7 @@ const HomeScreen: React.FC = () => {
           setContinueCourse(ongoingCourse);
         }
       }
-    } catch (error) {
+    } catch {
       // console.error('Error fetching courses:', error);
     } finally {
       setCoursesLoading(false);
@@ -509,7 +505,7 @@ const HomeScreen: React.FC = () => {
       if (serviceData.length > 0) {
         setServices(serviceData);
       }
-    } catch (error) {
+    } catch {
       // console.error('Error fetching services:', error);
     } finally {
       setServicesLoading(false);
@@ -558,9 +554,10 @@ const HomeScreen: React.FC = () => {
             ],
         }),
       );
-    } catch (error) {
+    } catch {
       const logout = async () => {
         await clearAllTokens();
+        store.dispatch(clearPresence());
         navigation.reset({
           index: 0,
           // @ts-ignore
@@ -580,6 +577,7 @@ const HomeScreen: React.FC = () => {
     fetchCourses();
     fetchServices();
     fetchUserDetails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -588,7 +586,6 @@ const HomeScreen: React.FC = () => {
         <Header />
         <SearchBar />
         <Categories />
-
         {continueCourse && (
           <>
             <SectionHeader
@@ -598,7 +595,6 @@ const HomeScreen: React.FC = () => {
             <ContinueCourseCard course={continueCourse} />
           </>
         )}
-
         <SectionHeader
           title="Recommendation Course"
           onSeeAll={() => navigation.navigate('BrowseCourseScreen')}
@@ -610,7 +606,7 @@ const HomeScreen: React.FC = () => {
             horizontal
             showsHorizontalScrollIndicator={false}
             className="mb-6"
-            contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+            contentContainerStyle={styles.contentContainer}
           >
             {courses.map(course => (
               <CourseCard key={course.id} course={course} />
@@ -623,7 +619,6 @@ const HomeScreen: React.FC = () => {
             </Text>
           </View>
         )}
-
         <SectionHeader title="Recommendation Services" />
         {servicesLoading ? (
           <LoadingIndicator />
@@ -632,7 +627,7 @@ const HomeScreen: React.FC = () => {
             horizontal
             showsHorizontalScrollIndicator={false}
             className="mb-6"
-            contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+            contentContainerStyle={styles.contentContainer}
           >
             {services.map(service => (
               <ServiceCard key={service.id} service={service} />
@@ -645,7 +640,6 @@ const HomeScreen: React.FC = () => {
             </Text>
           </View>
         )}
-
         <View className="h-4" />
       </ScrollView>
     </SafeAreaView>
@@ -678,6 +672,24 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textDecorationLine: 'line-through',
     textDecorationStyle: 'solid',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginHorizontal: 16,
+  },
+  sectionHeaderTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  sectionHeaderSeeAll: {
+    color: '#7c3aed',
+    fontWeight: '600',
+  },
+  contentContainer: {
+    paddingHorizontal: 16
   },
 });
 

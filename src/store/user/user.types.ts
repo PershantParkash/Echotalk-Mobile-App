@@ -15,6 +15,7 @@ export type UserReducerState = {
  readonly currentStep: RegisterSteps;
  readonly firebaseOtpVerificationId: string;
  readonly forceCompleteProfile: boolean;
+ readonly isAuthenticated: boolean;
 }
 
 export type UserEducation = {
@@ -174,3 +175,4 @@ export const SET_USER_DETAILS = "SET_USER_DETAILS";
 export const CLEAR_USER = "CLEAR_USER";
 export const RESET_USER_DETAILS = "RESET_USER_DETAILS";
 export const SET_FORCE_COMPLETE_PROFILE = "SET_FORCE_COMPLETE_PROFILE";
+export const SET_AUTHENTICATED = "SET_AUTHENTICATED";

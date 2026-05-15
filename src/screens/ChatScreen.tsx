@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import audioRecorderPlayer from '../utils/audioRecorderPlayer';
 import {
   View,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   Image,
   Modal,
+  Pressable,
   TouchableOpacity,
   Keyboard,
   KeyboardAvoidingView,
@@ -13,14 +14,15 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Video, Phone, X } from 'lucide-react-native';
 import useChatsService from '../services/chat';
-import ChatSocketSingleton from '../utils/sockets/chat-socket';
-import CallSocketSingleton from '../utils/sockets/call-socket';
 // import SocketDebugOverlay from '../components/SocketDebugOverlay';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { useChatSocket, useCallSocket } from '../hooks/useSocket';
+import { mergeUserWithPresence } from '../utils/presenceMerge';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatMessageBar, {
   recordingElapsedSecFromClock,
@@ -38,6 +40,24 @@ import {
 } from '../utils/chatMessages';
 import { voiceRecordingAudioSet } from '../utils/voiceRecordingConfig';
 import { ensureAudioPermission, ensureVideoPermission } from '../utils/permissions';
+import OutgoingCallConsentModal from '../components/call/OutgoingCallConsentModal';
+import { CALL_MESSAGE_EVENT, type CallMessagePayload } from '../utils/callMessageBridge';
+import { ensureCallSocketConnected } from '../utils/sockets/socketManager';
+import MessageActionSheet from '../components/chat/MessageActionSheet';
+import {
+  setConversations,
+} from '../store/conversations/conversationsSlice';
+import { Pin, ChevronDown, ChevronUp, X as CloseIcon } from 'lucide-react-native';
+
+interface MessageReaction {
+  id: number;
+  emoji: string;
+  user: {
+    id: number;
+    fullName: string | null;
+    profileImage?: string | null;
+  };
+}
 
 interface Message {
   id: number;
@@ -48,6 +68,14 @@ interface Message {
     fullName: string | null;
     profileImage: string | null;
   };
+  status?: 'sent' | 'delivered' | 'read';
+  isEdited?: boolean;
+  editedAt?: string | null;
+  isDeleted?: boolean;
+  deletedFor?: number[];
+  isPinned?: boolean;
+  pinnedBy?: number[];
+  reactions?: MessageReaction[];
   isCallMessage?: boolean;
   callStatus?: string | null;
   callDuration?: number | null;
@@ -94,10 +122,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     currentUserId: routeCurrentUserId,
     initialMessages = [],
   } = route?.params ?? {};
+  const dispatch = useDispatch();
   const { userDetails } = useSelector((state: RootState) => state.user);
   const currentUserId = routeCurrentUserId ?? userDetails?.id;
   const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
   const [newMessage, setNewMessage] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editingOriginalContent, setEditingOriginalContent] = useState('');
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [messageActionsVisible, setMessageActionsVisible] = useState(false);
+  const [messageActionsBusy, setMessageActionsBusy] = useState(false);
+  const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+  const [deleteDialogBusy, setDeleteDialogBusy] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [showPinnedMessages, setShowPinnedMessages] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -135,14 +173,35 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
   const scrollViewRef = useRef<ScrollView>(null);
   const loadingRef = useRef(false);
-  const socketRef = useRef<any>(null);
+  const isLoadingOlderRef = useRef(false);
+  const contentHeightRef = useRef(0);
+  const scrollOffsetRef = useRef(0);
+  const viewportHeightRef = useRef(0);
   const initializedChatIdRef = useRef<number | null>(null);
 
-  const { getMessages, sendMessage } = useChatsService();
+  const scrollToBottom = useCallback(() => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  }, []);
+
+  const chatSocket = useChatSocket();
+  const callSocket = useCallSocket();
+  const chatSocketRef = useRef(chatSocket);
+  chatSocketRef.current = chatSocket;
+
+  const {
+    getChats,
+    getMessages,
+    sendMessage,
+    editMessage,
+    deleteMessage,
+    getPinnedMessages,
+    pinMessage,
+    reactToMessage,
+  } = useChatsService();
 
   const emitRecordingStatus = useCallback(
     (isRecording: boolean) => {
-      const socket = socketRef.current;
+      const socket = chatSocketRef.current;
       const uid =
         typeof currentUserId === 'number'
           ? currentUserId
@@ -195,88 +254,160 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         ? chat?.users?.[0]
         : undefined;
 
-  // WebSocket connection effect
-  // WebSocket connection effect
+  const presenceByUserId = useSelector(
+    (state: RootState) => state.presence?.byUserId,
+  );
+
+  const otherUserLive = useMemo(
+    () => mergeUserWithPresence(otherUser, presenceByUserId) ?? otherUser,
+    [otherUser, presenceByUserId],
+  );
+
+  // Screen-specific socket listeners (socket is managed globally by socketManager)
   useEffect(() => {
+    if (!chatSocket) return;
 
-    const initializeSocket = async () => {
-      try {
-        const socket = await ChatSocketSingleton.connect();
-        socketRef.current = socket;
+    chatSocket?.emit?.('joinAllChats', [chatId]);
 
-        socket.on('connect', () => {
-          // Join this specific chat room
-          socket.emit('joinAllChats', [chatId]);
-        });
+    const onNewMessage = (message: any) => {
+      console.log('message received', message)
+      if (message?.chat?.id !== chatId) return;
+      setMessages(prev =>
+        mergeIncomingSocketMessage<Message>(prev, message),
+      );
+      setTimeout(() => scrollToBottom(), 100);
+    };
 
-        // Listen for new messages (same server event as web chat-and-talk-frontend)
-        socket.on('newMessage', (message: any) => {
-          if (message?.chat?.id !== chatId) {
-            return;
-          }
+    const onUserRecording = (payload: any) => {
+      if (payload?.chatId !== chatId) return;
+      const uid = payload?.userId;
+      const myId =
+        typeof currentUserId === 'number'
+          ? currentUserId
+          : userDetails?.id;
+      if (uid === myId) return;
+      const isRec = Boolean(payload?.isRecording);
+      const name =
+        typeof payload?.fullName === 'string'
+          ? payload.fullName
+          : 'Someone';
+      setRecordingUsers(prev => {
+        if (isRec) {
+          if (prev.some(u => u.userId === uid)) return prev;
+          return [...prev, { userId: uid, fullName: name }];
+        }
+        return prev.filter(u => u.userId !== uid);
+      });
+    };
+
+    const onReconnect = () => {
+      chatSocket?.emit?.('joinAllChats', [chatId]);
+    };
+
+    const onMessageEdited = (message: any) => {
+      if (!message?.id) {
+        return;
+      }
+      updateMessageById(Number(message?.id), currentMessage => ({
+        ...currentMessage,
+        content: message?.content ?? currentMessage?.content,
+        isEdited: true,
+        editedAt:
+          typeof message?.editedAt === 'string'
+            ? message?.editedAt
+            : new Date().toISOString(),
+      }));
+      refreshPinnedMessages?.()?.catch?.(() => {});
+      syncConversationList?.()?.catch?.(() => {});
+    };
+
+    const onMessageDeleted = (payload: any) => {
+      if (payload?.type !== 'everyone' || !payload?.messageId) {
+        return;
+      }
+      updateMessageById(Number(payload?.messageId), currentMessage => ({
+        ...currentMessage,
+        content: 'This message was deleted',
+        isDeleted: true,
+        isEdited: false,
+        pinnedBy: [],
+        reactions: [],
+      }));
+      refreshPinnedMessages?.()?.catch?.(() => {});
+      syncConversationList?.()?.catch?.(() => {});
+    };
+
+    const onReactionUpdated = (message: any) => {
+      if (!message?.id) {
+        return;
+      }
+      updateMessageById(Number(message?.id), currentMessage => ({
+        ...currentMessage,
+        reactions: Array.isArray(message?.reactions)
+          ? message?.reactions
+          : currentMessage?.reactions ?? [],
+      }));
+      setPinnedMessages(prev =>
+        prev?.map?.(pinnedMessage =>
+          Number(pinnedMessage?.id) === Number(message?.id)
+            ? {
+                ...pinnedMessage,
+                reactions: Array.isArray(message?.reactions)
+                  ? message?.reactions
+                  : pinnedMessage?.reactions ?? [],
+              }
+            : pinnedMessage,
+        ) ?? [],
+      );
+    };
+
+    const onMessagePinned = () => {
+      refreshPinnedMessages?.()?.catch?.(() => {});
+    };
+
+    chatSocket?.on?.('newMessage', onNewMessage);
+    chatSocket?.on?.('userRecording', onUserRecording);
+    chatSocket?.on?.('connect', onReconnect);
+    chatSocket?.on?.('messageEdited', onMessageEdited);
+    chatSocket?.on?.('messageDeleted', onMessageDeleted);
+    chatSocket?.on?.('reactionUpdated', onReactionUpdated);
+    chatSocket?.on?.('messagePinned', onMessagePinned);
+
+    return () => {
+      chatSocket?.off?.('newMessage', onNewMessage);
+      chatSocket?.off?.('userRecording', onUserRecording);
+      chatSocket?.off?.('connect', onReconnect);
+      chatSocket?.off?.('messageEdited', onMessageEdited);
+      chatSocket?.off?.('messageDeleted', onMessageDeleted);
+      chatSocket?.off?.('reactionUpdated', onReactionUpdated);
+      chatSocket?.off?.('messagePinned', onMessagePinned);
+    };
+  }, [
+    chatSocket,
+    chatId,
+    currentUserId,
+    refreshPinnedMessages,
+    scrollToBottom,
+    syncConversationList,
+    updateMessageById,
+    userDetails?.id,
+  ]);
+
+  useEffect(() => {
+    const chatUserIds = chat?.users?.map((u: ChatUser) => u?.id) ?? [];
+    const subscription = DeviceEventEmitter.addListener(
+      CALL_MESSAGE_EVENT,
+      (payload: CallMessagePayload) => {
+        if (payload?.callerId && chatUserIds?.includes(payload.callerId)) {
           setMessages(prev =>
-            mergeIncomingSocketMessage<Message>(prev, message),
+            mergeIncomingSocketMessage<Message>(prev, payload.message),
           );
           setTimeout(() => scrollToBottom(), 100);
-        });
-
-        socket.on('userRecording', (payload: any) => {
-          if (payload?.chatId !== chatId) {
-            return;
-          }
-          const uid = payload?.userId;
-          const myId =
-            typeof currentUserId === 'number'
-              ? currentUserId
-              : userDetails?.id;
-          if (uid === myId) {
-            return;
-          }
-          const isRec = Boolean(payload?.isRecording);
-          const name =
-            typeof payload?.fullName === 'string'
-              ? payload.fullName
-              : 'Someone';
-          setRecordingUsers(prev => {
-            if (isRec) {
-              if (prev.some(u => u.userId === uid)) {
-                return prev;
-              }
-              return [...prev, { userId: uid, fullName: name }];
-            }
-            return prev.filter(u => u.userId !== uid);
-          });
-        });
-
-        socket.on('disconnect', () => {
-        });
-
-        socket.on('error', (_error: any) => {
-          // console.error('❌ Socket error:', error);
-        });
-      } catch {
-        // console.error('Failed to initialize socket:', error);
-        Alert.alert(
-          'Connection Error',
-          'Failed to connect to chat. Please try again.',
-        );
-      }
-    };
-
-    initializeSocket();
-
-    // Cleanup on unmount
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.off('newMessage');
-        socketRef.current.off('userRecording');
-        socketRef.current.off('connect');
-        socketRef.current.off('disconnect');
-        socketRef.current.off('error');
-      }
-      ChatSocketSingleton.disconnect();
-    };
-  }, [chatId, currentUserId, userDetails?.id]);
+        }
+      },
+    );
+    return () => subscription?.remove();
+  }, [chatId, chat?.users, scrollToBottom]);
 
   /** Only run voice cleanup when `chatId` changes — not when `userDetails` updates (that was stopping the recorder mid-session). */
   const resetVoiceRef = useRef(resetVoiceSession);
@@ -349,6 +480,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     if (voiceUiPhase !== 'idle') {
       return;
     }
+    if (editingMessageId != null) {
+      Alert.alert(
+        'Edit message',
+        'Save or cancel the current edit before recording a voice message.',
+      );
+      return;
+    }
     if (pendingImageAsset?.uri != null) {
       Alert.alert(
         'Voice message',
@@ -411,6 +549,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     pendingImageAsset?.uri,
     sending,
     imageUploading,
+    editingMessageId,
     emitRecordingStatus,
   ]);
 
@@ -540,10 +679,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       const response = await sendMessage(chatId, audioUrl);
 
       setMessages(prev => {
+        const optimistic = prev.find(msg => msg.id === tempId);
         const filtered = prev.filter(msg => msg.id !== tempId);
         const responseExists = filtered.some(msg => msg.id === response?.id);
         if (!responseExists && response) {
-          return [...filtered, response];
+          const merged = {
+            ...response,
+            voiceDurationSec:
+              response?.voiceDurationSec ?? optimistic?.voiceDurationSec ?? dur,
+          };
+          return [...filtered, merged];
         }
         return filtered;
       });
@@ -559,6 +704,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     voiceFilePath,
     voicePreviewDurationSec,
     currentUserId,
+    scrollToBottom,
     userDetails?.fullName,
     userDetails?.profileImage,
     uploadImageFromUri,
@@ -590,7 +736,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               });
             });
           } else {
-            setMessages(prev => [...sortedMessages, ...prev]);
+            setMessages(prev => {
+              const existingIds = new Set(prev.map(m => m?.id));
+              const unique = sortedMessages.filter(
+                (m: Message) => !existingIds.has(m?.id),
+              );
+              return [...unique, ...prev];
+            });
           }
 
           setHasMore(response.data.length === 20);
@@ -600,6 +752,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       } finally {
         setLoading(false);
         loadingRef.current = false;
+        if (pageNum > 1) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              isLoadingOlderRef.current = false;
+            });
+          });
+        }
       }
     },
     [chatId, getMessages],
@@ -629,7 +788,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     setMessages([]);
     setHasMore(true);
     fetchMessages(1);
-  }, [chatId, initialMessages, fetchMessages]);
+  }, [chatId, initialMessages, fetchMessages, scrollToBottom]);
 
   // If `initialMessages` becomes available after mount, hydrate only when empty.
   useEffect(() => {
@@ -643,7 +802,267 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     requestAnimationFrame(() => {
       requestAnimationFrame(() => scrollToBottom?.());
     });
-  }, [chatId, initialMessages, messages?.length]);
+  }, [chatId, initialMessages, messages?.length, scrollToBottom]);
+
+  useEffect(() => {
+    refreshPinnedMessages?.()?.catch?.(() => {});
+  }, [refreshPinnedMessages]);
+
+  useEffect(() => {
+    if ((visiblePinnedMessages?.length ?? 0) === 0 && showPinnedMessages) {
+      setShowPinnedMessages(false);
+    }
+  }, [showPinnedMessages, visiblePinnedMessages?.length]);
+
+  useEffect(() => {
+    if (editingMessageId == null) {
+      return;
+    }
+    const editingMessage = messages?.find?.(
+      message => Number(message?.id) === Number(editingMessageId),
+    );
+    if (
+      editingMessage == null ||
+      editingMessage?.isDeleted ||
+      isMessageHiddenForCurrentUser(editingMessage)
+    ) {
+      cancelEditingMessage?.();
+    }
+  }, [
+    cancelEditingMessage,
+    editingMessageId,
+    isMessageHiddenForCurrentUser,
+    messages,
+  ]);
+
+  useEffect(() => {
+    if (!messageActionsVisible || selectedMessage == null) {
+      return;
+    }
+    const latestSelectedMessage = messages?.find?.(
+      message => Number(message?.id) === Number(selectedMessage?.id),
+    );
+    if (
+      latestSelectedMessage == null ||
+      latestSelectedMessage?.isDeleted ||
+      isMessageHiddenForCurrentUser(latestSelectedMessage)
+    ) {
+      closeMessageActions?.();
+      closeDeleteDialog?.();
+    } else if (latestSelectedMessage !== selectedMessage) {
+      setSelectedMessage(latestSelectedMessage);
+    }
+  }, [
+    closeDeleteDialog,
+    closeMessageActions,
+    isMessageHiddenForCurrentUser,
+    messageActionsVisible,
+    messages,
+    selectedMessage,
+  ]);
+
+  const saveEditedMessage = useCallback(async () => {
+    if (editingMessageId == null) {
+      return;
+    }
+    const nextContent = newMessage?.trim?.() ?? '';
+    if (!nextContent?.length) {
+      Alert.alert('Edit message', 'Message cannot be empty.');
+      return;
+    }
+    if (nextContent === (editingOriginalContent?.trim?.() ?? '')) {
+      cancelEditingMessage?.();
+      return;
+    }
+    try {
+      setSending(true);
+      const updated = await editMessage?.(editingMessageId, nextContent);
+      updateMessageById(editingMessageId, message => ({
+        ...message,
+        content: updated?.content ?? nextContent,
+        isEdited: true,
+        editedAt: updated?.editedAt ?? new Date().toISOString(),
+      }));
+      cancelEditingMessage?.();
+      syncConversationList?.()?.catch?.(() => {});
+      refreshPinnedMessages?.()?.catch?.(() => {});
+    } catch (e: unknown) {
+      Alert.alert(
+        'Edit message',
+        e instanceof Error ? e?.message : 'Could not update the message.',
+      );
+    } finally {
+      setSending(false);
+    }
+  }, [
+    cancelEditingMessage,
+    editMessage,
+    editingMessageId,
+    editingOriginalContent,
+    newMessage,
+    refreshPinnedMessages,
+    syncConversationList,
+    updateMessageById,
+  ]);
+
+  const handleReactToCurrentMessage = useCallback(async (emoji: string) => {
+    const targetMessageId = selectedMessage?.id;
+    if (!targetMessageId || !emoji?.trim?.()) {
+      return;
+    }
+    closeMessageActions?.();
+    try {
+      const updated = await reactToMessage?.(targetMessageId, emoji);
+      updateMessageById(targetMessageId, message => ({
+        ...message,
+        reactions: Array.isArray(updated?.reactions)
+          ? updated?.reactions
+          : message?.reactions ?? [],
+      }));
+      setPinnedMessages(prev =>
+        prev?.map?.(message =>
+          Number(message?.id) === Number(targetMessageId)
+            ? {
+                ...message,
+                reactions: Array.isArray(updated?.reactions)
+                  ? updated?.reactions
+                  : message?.reactions ?? [],
+              }
+            : message,
+        ) ?? [],
+      );
+    } catch (e: unknown) {
+      Alert.alert(
+        'Reaction',
+        e instanceof Error ? e?.message : 'Could not react to the message.',
+      );
+    }
+  }, [closeMessageActions, reactToMessage, selectedMessage?.id, updateMessageById]);
+
+  const handleReactToggle = useCallback(async (messageId: number, emoji: string) => {
+    if (!messageId || !emoji?.trim?.()) {
+      return;
+    }
+    try {
+      const updated = await reactToMessage?.(messageId, emoji);
+      updateMessageById(messageId, message => ({
+        ...message,
+        reactions: Array.isArray(updated?.reactions)
+          ? updated?.reactions
+          : message?.reactions ?? [],
+      }));
+      setPinnedMessages(prev =>
+        prev?.map?.(message =>
+          Number(message?.id) === Number(messageId)
+            ? {
+                ...message,
+                reactions: Array.isArray(updated?.reactions)
+                  ? updated?.reactions
+                  : message?.reactions ?? [],
+              }
+            : message,
+        ) ?? [],
+      );
+    } catch (e: unknown) {
+      Alert.alert(
+        'Reaction',
+        e instanceof Error ? e?.message : 'Could not update the reaction.',
+      );
+    }
+  }, [reactToMessage, updateMessageById]);
+
+  const handleTogglePinForCurrentMessage = useCallback(async () => {
+    const targetMessage = selectedMessage;
+    if (targetMessage?.id == null) {
+      return;
+    }
+    try {
+      setMessageActionsBusy(true);
+      const updated = await pinMessage?.(chatId, targetMessage?.id);
+      updateMessageById(targetMessage?.id, message => ({
+        ...message,
+        pinnedBy: Array.isArray(updated?.pinnedBy)
+          ? updated?.pinnedBy
+          : message?.pinnedBy ?? [],
+      }));
+      closeMessageActions?.();
+      await refreshPinnedMessages?.();
+    } catch (e: unknown) {
+      Alert.alert(
+        'Pinned messages',
+        e instanceof Error ? e?.message : 'Could not update the pinned message.',
+      );
+    } finally {
+      setMessageActionsBusy(false);
+    }
+  }, [
+    chatId,
+    closeMessageActions,
+    pinMessage,
+    refreshPinnedMessages,
+    selectedMessage,
+    updateMessageById,
+  ]);
+
+  const openDeleteDialog = useCallback(() => {
+    setMessageActionsVisible(false);
+    setMessageActionsBusy(false);
+    setDeleteDialogVisible(true);
+  }, []);
+
+  const handleDeleteMessage = useCallback(async (deleteFor: 'me' | 'everyone') => {
+    const targetMessage = selectedMessage;
+    if (targetMessage?.id == null) {
+      return;
+    }
+    try {
+      setDeleteDialogBusy(true);
+      await deleteMessage?.(targetMessage?.id, deleteFor);
+      if (deleteFor === 'everyone') {
+        updateMessageById(targetMessage?.id, message => ({
+          ...message,
+          content: 'This message was deleted',
+          isDeleted: true,
+          isEdited: false,
+          editedAt: message?.editedAt ?? null,
+          pinnedBy: [],
+          reactions: [],
+        }));
+      } else if (typeof currentUserId === 'number') {
+        updateMessageById(targetMessage?.id, message => ({
+          ...message,
+          deletedFor: Array.from(
+            new Set([...(message?.deletedFor ?? []), Number(currentUserId)]),
+          ),
+        }));
+      }
+      if (Number(editingMessageId) === Number(targetMessage?.id)) {
+        cancelEditingMessage?.();
+      }
+      closeDeleteDialog?.();
+      closeMessageActions?.();
+      await refreshPinnedMessages?.();
+      syncConversationList?.()?.catch?.(() => {});
+    } catch (e: unknown) {
+      Alert.alert(
+        'Delete message',
+        e instanceof Error ? e?.message : 'Could not delete the message.',
+      );
+    } finally {
+      setDeleteDialogBusy(false);
+    }
+  }, [
+    cancelEditingMessage,
+    closeDeleteDialog,
+    closeMessageActions,
+    currentUserId,
+    deleteMessage,
+    editingMessageId,
+    refreshPinnedMessages,
+    selectedMessage,
+    syncConversationList,
+    updateMessageById,
+  ]);
 
   const handleSendMessage = async () => {
     const messageContent = newMessage.trim();
@@ -705,6 +1124,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   /** Pick image and stage it for preview (no upload yet). */
   const handlePickImageForPreview = async () => {
     if (sending || imageUploading) {
+      return;
+    }
+    if (editingMessageId != null) {
+      Alert.alert(
+        'Edit message',
+        'Save or cancel the current edit before attaching an image.',
+      );
       return;
     }
     if (voiceUiPhase !== 'idle') {
@@ -795,6 +1221,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   };
 
   const handleSendFromBar = async () => {
+    if (editingMessageId != null) {
+      await saveEditedMessage?.();
+      return;
+    }
+
     const hasPendingImage = pendingImageAsset?.uri != null;
     const hasText = (newMessage?.trim?.() ?? '').length > 0;
 
@@ -811,12 +1242,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }
   };
 
-  const scrollToBottom = () => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  };
-
   const handleLoadMore = () => {
     if (hasMore && !loading && !loadingRef.current) {
+      isLoadingOlderRef.current = true;
       const nextPage = page + 1;
       setPage(nextPage);
       fetchMessages(nextPage);
@@ -833,12 +1261,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   };
 
   const getLastSeenText = (): string => {
-    if (otherUser?.isOnline) {
+    if (otherUserLive?.isOnline) {
       return 'Active now';
     }
 
-    if (otherUser?.lastSeenAt) {
-      const lastSeen = new Date(otherUser.lastSeenAt);
+    if (otherUserLive?.lastSeenAt) {
+      const lastSeen = new Date(otherUserLive.lastSeenAt);
       const now = new Date();
       const diffInMinutes = Math.floor(
         (now.getTime() - lastSeen.getTime()) / 60000,
@@ -865,10 +1293,182 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     return `https://i.pravatar.cc/150?img=${user.id + 10}`;
   };
 
+  const syncConversationList = useCallback(async () => {
+    try {
+      const chats = await getChats?.();
+      dispatch?.(setConversations(chats ?? []));
+    } catch {
+      // Keep chat UI responsive even if the sidebar refresh fails.
+    }
+  }, [dispatch, getChats]);
+
+  const refreshPinnedMessages = useCallback(async () => {
+    try {
+      const pinned = await getPinnedMessages?.(chatId);
+      setPinnedMessages(Array.isArray(pinned) ? pinned : []);
+    } catch {
+      setPinnedMessages([]);
+    }
+  }, [chatId, getPinnedMessages]);
+
+  const isMessageHiddenForCurrentUser = useCallback(
+    (message: Message | null | undefined): boolean => {
+      if (typeof currentUserId !== 'number') {
+        return false;
+      }
+      return (
+        Array.isArray(message?.deletedFor) &&
+        message?.deletedFor?.some?.(
+          deletedUserId => Number(deletedUserId) === Number(currentUserId),
+        )
+      );
+    },
+    [currentUserId],
+  );
+
+  const isMessagePinnedByCurrentUser = useCallback(
+    (message: Message | null | undefined): boolean => {
+      if (typeof currentUserId !== 'number') {
+        return false;
+      }
+      return (
+        Array.isArray(message?.pinnedBy) &&
+        message?.pinnedBy?.some?.(
+          pinnedUserId => Number(pinnedUserId) === Number(currentUserId),
+        )
+      );
+    },
+    [currentUserId],
+  );
+
+  const visibleMessages = useMemo(
+    () => messages?.filter?.(message => !isMessageHiddenForCurrentUser(message)) ?? [],
+    [isMessageHiddenForCurrentUser, messages],
+  );
+
+  const visiblePinnedMessages = useMemo(
+    () =>
+      pinnedMessages?.filter?.(
+        pinnedMessage => !isMessageHiddenForCurrentUser(pinnedMessage),
+      ) ?? [],
+    [isMessageHiddenForCurrentUser, pinnedMessages],
+  );
+
+  const updateMessageById = useCallback(
+    (messageId: number, updater: (message: Message) => Message) => {
+      setMessages(prev =>
+        prev?.map?.(message =>
+          Number(message?.id) === Number(messageId) ? updater(message) : message,
+        ) ?? [],
+      );
+    },
+    [],
+  );
+
+  const closeMessageActions = useCallback(() => {
+    setMessageActionsVisible(false);
+    setSelectedMessage(null);
+    setMessageActionsBusy(false);
+  }, []);
+
+  const closeDeleteDialog = useCallback(() => {
+    setDeleteDialogVisible(false);
+    setDeleteDialogBusy(false);
+    setSelectedMessage(null);
+  }, []);
+
+  const formatPinnedPreview = useCallback((message: Message | null | undefined) => {
+    if (message?.isDeleted) {
+      return 'This message was deleted';
+    }
+    if (message?.isCallMessage) {
+      return 'Call message';
+    }
+    if (getChatAudioDisplayUrl(message?.content ?? null)) {
+      return 'Voice message';
+    }
+    if (getChatImageDisplayUrl(message?.content ?? null)) {
+      return 'Photo';
+    }
+    const preview = message?.content?.trim?.() ?? '';
+    return preview?.length > 0 ? preview : 'Message';
+  }, []);
+
+  const canEditMessage = useCallback((message: Message | null | undefined) => {
+    const isMine =
+      typeof currentUserId === 'number' &&
+      Number(message?.sender?.id) === Number(currentUserId);
+    if (!isMine || message?.isDeleted || message?.isCallMessage) {
+      return false;
+    }
+    if (getChatAudioDisplayUrl(message?.content ?? null)) {
+      return false;
+    }
+    if (getChatImageDisplayUrl(message?.content ?? null)) {
+      return false;
+    }
+    const createdAt = new Date(message?.createdAt ?? 0).getTime();
+    if (!Number.isFinite(createdAt)) {
+      return false;
+    }
+    return Date.now() - createdAt < 60 * 60 * 1000;
+  }, [currentUserId]);
+
+  const openMessageActions = useCallback((message: Message) => {
+    if (message?.isDeleted || isMessageHiddenForCurrentUser(message)) {
+      return;
+    }
+    setSelectedMessage(message);
+    setMessageActionsVisible(true);
+  }, [isMessageHiddenForCurrentUser]);
+
+  const startEditingMessage = useCallback((message: Message | null | undefined) => {
+    const targetMessage = message ?? selectedMessage;
+    if (!targetMessage?.id || !canEditMessage(targetMessage)) {
+      return;
+    }
+    if ((pendingImageAsset?.uri?.trim?.() ?? '').length > 0 || voiceUiPhase !== 'idle') {
+      Alert.alert(
+        'Finish your draft first',
+        'Send or discard the current image or voice message before editing another message.',
+      );
+      return;
+    }
+    if (editingMessageId != null && editingMessageId !== targetMessage?.id) {
+      Alert.alert(
+        'Finish editing',
+        'Save or cancel the current edit before switching to another message.',
+      );
+      return;
+    }
+    setEditingMessageId(targetMessage?.id);
+    setEditingOriginalContent(targetMessage?.content ?? '');
+    setNewMessage(targetMessage?.content ?? '');
+    closeMessageActions();
+    requestAnimationFrame(() => scrollToBottom?.());
+  }, [
+    canEditMessage,
+    closeMessageActions,
+    editingMessageId,
+    pendingImageAsset?.uri,
+    selectedMessage,
+    scrollToBottom,
+    voiceUiPhase,
+  ]);
+
+  const cancelEditingMessage = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingOriginalContent('');
+    setNewMessage('');
+  }, []);
+
   const groupMessagesByDate = () => {
     const grouped: { [key: string]: Message[] } = {};
+    const seen = new Set<number>();
 
-    messages.forEach(message => {
+    visibleMessages?.forEach?.(message => {
+      if (seen.has(message?.id)) return;
+      seen.add(message?.id);
       const date = new Date(message.createdAt);
       const today = new Date();
       const yesterday = new Date(today);
@@ -908,15 +1508,109 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     setImageViewer(prev => ({ ...prev, visible: false }));
   }, []);
 
+  const renderPinnedIndicator = (message: Message, isMyMessage: boolean) => {
+    if (!isMessagePinnedByCurrentUser(message)) {
+      return null;
+    }
+    return (
+      <View className={`mb-1 ${isMyMessage ? 'items-end' : 'items-start'}`}>
+        <View className="flex-row items-center">
+          <Pin size={12} color="#42a7c3" />
+          <Text className="ml-1 text-xs font-medium text-[#42a7c3]">Pinned</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderMessageMeta = (message: Message, isMyMessage: boolean) => (
+    <View
+      className={`flex-row items-center mt-1 ${isMyMessage ? 'justify-end' : 'justify-start'}`}
+    >
+      {message?.isEdited && (
+        <Text className="text-xs italic text-gray-400 mr-1">edited</Text>
+      )}
+      <Text className="text-xs text-gray-400">{formatTime(message?.createdAt)}</Text>
+    </View>
+  );
+
+  const renderReactionPills = (message: Message, isMyMessage: boolean) => {
+    if (!Array.isArray(message?.reactions) || message?.reactions?.length === 0) {
+      return null;
+    }
+
+    const groupedReactions = message?.reactions?.reduce?.(
+      (acc, reaction) => {
+        const key = reaction?.emoji ?? '';
+        if (!key?.length) {
+          return acc;
+        }
+        acc[key] = acc?.[key] ? [...acc[key], reaction] : [reaction];
+        return acc;
+      },
+      {} as Record<string, MessageReaction[]>,
+    );
+
+    const emojis = Object.keys(groupedReactions ?? {});
+    if (!emojis?.length) {
+      return null;
+    }
+
+    return (
+      <View
+        style={[
+          styles.reactionRow,
+          isMyMessage ? styles.reactionRowMine : styles.reactionRowOther,
+        ]}
+      >
+        {emojis?.map?.(emoji => {
+          const users = groupedReactions?.[emoji] ?? [];
+          const reactedByMe =
+            typeof currentUserId === 'number' &&
+            users?.some?.(
+              reaction => Number(reaction?.user?.id) === Number(currentUserId),
+            );
+          return (
+            <TouchableOpacity
+              key={`${message?.id}-${emoji}`}
+              activeOpacity={0.85}
+              style={[
+                styles.reactionPill,
+                reactedByMe ? styles.reactionPillActive : null,
+              ]}
+              onPress={() => handleReactToggle?.(message?.id, emoji)}
+            >
+              <Text style={styles.reactionEmojiText}>{emoji}</Text>
+              <Text style={styles.reactionCountText}>{users?.length ?? 0}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderDeletedBubble = (isMyMessage: boolean) => (
+    <View
+      style={[
+        styles.deletedBubble,
+        isMyMessage ? styles.deletedBubbleMine : styles.deletedBubbleOther,
+      ]}
+    >
+      <Text style={styles.deletedBubbleText}>This message was deleted</Text>
+    </View>
+  );
+
   const renderMessage = (message: Message) => {
     const isMyMessage =
       typeof currentUserId === 'number' && message?.sender?.id === currentUserId;
+    const isDeleted = Boolean(message?.isDeleted);
 
-    if (message?.isCallMessage) {
+    if (message?.isCallMessage && !isDeleted) {
       return (
-        <View
+        <Pressable
           key={message.id}
-          className={`mb-4 ${isMyMessage ? 'items-end' : 'items-start'}`}
+          onLongPress={() => openMessageActions?.(message)}
+          delayLongPress={280}
+          style={styles.messageListItem}
         >
           {!isMyMessage && (
             <View className="flex-row items-start mb-2">
@@ -926,31 +1620,54 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               />
               <View className="flex-1 min-w-0 max-w-[92%]">
                 <Text className="text-sm font-semibold mb-1 text-gray-900">
-                  {message.sender.fullName || 'Unknown'}
+                  {message?.sender?.fullName || 'Unknown'}
                 </Text>
-                <CallMessageCard
-                  message={message}
-                  formatMessageTime={formatTime}
-                />
+                {renderPinnedIndicator(message, false)}
+                <Pressable onLongPress={() => openMessageActions?.(message)} delayLongPress={280}>
+                  <CallMessageCard
+                    message={message}
+                    formatMessageTime={formatTime}
+                  />
+                </Pressable>
+                {renderReactionPills(message, false)}
+                {renderMessageMeta(message, false)}
               </View>
             </View>
           )}
           {isMyMessage && (
-            <CallMessageCard
-              message={message}
-              formatMessageTime={formatTime}
-            />
+            <View className="flex-row items-start mb-2 justify-end">
+              <View className="flex-1 min-w-0 max-w-[92%] items-end">
+                <Text className="text-sm font-semibold mb-1 text-gray-900">
+                  {message?.sender?.fullName || 'You'}
+                </Text>
+                {renderPinnedIndicator(message, true)}
+                <Pressable onLongPress={() => openMessageActions?.(message)} delayLongPress={280}>
+                  <CallMessageCard
+                    message={message}
+                    formatMessageTime={formatTime}
+                  />
+                </Pressable>
+                {renderReactionPills(message, true)}
+                {renderMessageMeta(message, true)}
+              </View>
+              <Image
+                source={{ uri: getProfileImage(message.sender) }}
+                className="w-10 h-10 rounded-full ml-2"
+              />
+            </View>
           )}
-        </View>
+        </Pressable>
       );
     }
 
     const audioUri = getChatAudioDisplayUrl(message?.content);
-    if (audioUri) {
+    if (audioUri && !isDeleted) {
       return (
-        <View
+        <Pressable
           key={message.id}
-          className={`mb-4 ${isMyMessage ? 'items-end' : 'items-start'}`}
+          onLongPress={() => openMessageActions?.(message)}
+          delayLongPress={280}
+          style={styles.messageListItem}
         >
           {!isMyMessage && (
             <View className="flex-row items-start mb-2">
@@ -960,34 +1677,47 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               />
               <View className="flex-1 min-w-0 max-w-[92%]">
                 <Text className="text-sm font-semibold mb-1 text-gray-900">
-                  {message.sender.fullName || 'Unknown'}
+                  {message?.sender?.fullName || 'Unknown'}
                 </Text>
-                <VoiceMessageBubble
-                  audioUri={audioUri}
-                  isMyMessage={false}
-                  messageId={message.id}
-                  initialDurationSec={message.voiceDurationSec ?? null}
-                />
-                <Text className="text-xs text-gray-400 mt-1">
-                  {formatTime(message.createdAt)}
-                </Text>
+                {renderPinnedIndicator(message, false)}
+                <Pressable onLongPress={() => openMessageActions?.(message)} delayLongPress={280}>
+                  <VoiceMessageBubble
+                    audioUri={audioUri}
+                    isMyMessage={false}
+                    messageId={message.id}
+                    initialDurationSec={message?.voiceDurationSec ?? null}
+                  />
+                </Pressable>
+                {renderReactionPills(message, false)}
+                {renderMessageMeta(message, false)}
               </View>
             </View>
           )}
           {isMyMessage && (
-            <View className="items-end">
-              <VoiceMessageBubble
-                audioUri={audioUri}
-                isMyMessage
-                messageId={message.id}
-                initialDurationSec={message.voiceDurationSec ?? null}
+            <View className="flex-row items-start mb-2 justify-end">
+              <View className="flex-1 min-w-0 max-w-[92%] items-end">
+                <Text className="text-sm font-semibold mb-1 text-gray-900">
+                  {message?.sender?.fullName || 'You'}
+                </Text>
+                {renderPinnedIndicator(message, true)}
+                <Pressable onLongPress={() => openMessageActions?.(message)} delayLongPress={280}>
+                  <VoiceMessageBubble
+                    audioUri={audioUri}
+                    isMyMessage
+                    messageId={message.id}
+                    initialDurationSec={message?.voiceDurationSec ?? null}
+                  />
+                </Pressable>
+                {renderReactionPills(message, true)}
+                {renderMessageMeta(message, true)}
+              </View>
+              <Image
+                source={{ uri: getProfileImage(message.sender) }}
+                className="w-10 h-10 rounded-full ml-2"
               />
-              <Text className="text-xs text-gray-400 mt-1">
-                {formatTime(message.createdAt)}
-              </Text>
             </View>
           )}
-        </View>
+        </Pressable>
       );
     }
 
@@ -997,10 +1727,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       ? imageAspectRatios?.[imageDisplayUrl ?? '']
       : undefined;
 
-    const bubbleContent = showImage ? (
+    const bubbleContent = isDeleted ? (
+      renderDeletedBubble(isMyMessage)
+    ) : showImage ? (
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={() => openImageViewer(imageDisplayUrl ?? null)}
+        onLongPress={() => openMessageActions?.(message)}
+        delayLongPress={280}
       >
         <Image
           source={{ uri: imageDisplayUrl ?? '' }}
@@ -1031,18 +1765,22 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         />
       </TouchableOpacity>
     ) : (
-      <Text
-        className={isMyMessage ? 'text-white' : 'text-gray-800'}
-        selectable
-      >
-        {message.content}
-      </Text>
+      <Pressable onLongPress={() => openMessageActions?.(message)} delayLongPress={280}>
+        <Text
+          className={isMyMessage ? 'text-white' : 'text-gray-800'}
+          selectable
+        >
+          {message?.content}
+        </Text>
+      </Pressable>
     );
 
     return (
-      <View
+      <Pressable
         key={message.id}
-        className={`mb-4 ${isMyMessage ? 'items-end' : 'items-start'}`}
+        onLongPress={() => openMessageActions?.(message)}
+        delayLongPress={280}
+        style={styles.messageListItem}
       >
         {!isMyMessage && (
           <View className="flex-row items-start mb-2">
@@ -1051,36 +1789,47 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               className="w-10 h-10 rounded-full mr-2"
             />
             <View>
-              <Text className="text-sm font-semibold mb-1">
-                {message.sender.fullName || 'Unknown'}
+              <Text className="text-sm font-semibold mb-1 text-gray-900">
+                {message?.sender?.fullName || 'Unknown'}
               </Text>
+              {renderPinnedIndicator(message, false)}
               <View
-                className={`bg-gray-100 rounded-2xl rounded-tl-sm max-w-[280px] ${showImage ? 'p-1 overflow-hidden' : 'px-4 py-3'
+                className={`${isDeleted ? '' : 'bg-gray-100'} rounded-2xl rounded-tl-sm max-w-[280px] ${showImage ? 'p-1 overflow-hidden' : isDeleted ? '' : 'px-4 py-3'
                   }`}
+                style={isDeleted ? styles.deletedBubbleContainer : undefined}
               >
                 {bubbleContent}
               </View>
-              <Text className="text-xs text-gray-400 mt-1">
-                {formatTime(message.createdAt)}
-              </Text>
+              {renderReactionPills(message, false)}
+              {renderMessageMeta(message, false)}
             </View>
           </View>
         )}
 
         {isMyMessage && (
-          <View className="items-end">
-            <View
-              className={`bg-purple-600 rounded-2xl rounded-tr-sm max-w-[280px] ${showImage ? 'p-1 overflow-hidden' : 'px-4 py-3'
-                }`}
-            >
-              {bubbleContent}
+          <View className="flex-row items-start mb-2 justify-end">
+            <View className="items-end">
+              <Text className="text-sm font-semibold mb-1 text-gray-900">
+                {message?.sender?.fullName || 'You'}
+              </Text>
+              {renderPinnedIndicator(message, true)}
+              <View
+                className={`${isDeleted ? '' : 'bg-purple-600'} rounded-2xl rounded-tr-sm max-w-[280px] ${showImage ? 'p-1 overflow-hidden' : isDeleted ? '' : 'px-4 py-3'
+                  }`}
+                style={isDeleted ? styles.deletedBubbleContainer : undefined}
+              >
+                {bubbleContent}
+              </View>
+              {renderReactionPills(message, true)}
+              {renderMessageMeta(message, true)}
             </View>
-            <Text className="text-xs text-gray-400 mt-1">
-              {formatTime(message.createdAt)}
-            </Text>
+            <Image
+              source={{ uri: getProfileImage(message.sender) }}
+              className="w-10 h-10 rounded-full ml-2"
+            />
           </View>
         )}
-      </View>
+      </Pressable>
     );
   };
 
@@ -1136,7 +1885,11 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         }
       }
 
-      const socket = await CallSocketSingleton.connect();
+      const socket = callSocket ?? (await ensureCallSocketConnected());
+      if (!socket?.connected) {
+        Alert.alert('Call error', 'Call service is not connected. Please try again.');
+        return;
+      }
       const fromId = currentUserId;
       const toId = otherUser.id;
       if (!fromId || !toId) {
@@ -1185,6 +1938,28 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }
   };
 
+  const [outgoingConsentVisible, setOutgoingConsentVisible] = useState(false);
+  const [outgoingConsentType, setOutgoingConsentType] = useState<
+    'audio' | 'video' | null
+  >(null);
+
+  const requestStartCall = (type: 'audio' | 'video') => {
+    setOutgoingConsentType(type);
+    setOutgoingConsentVisible(true);
+  };
+
+  const declineOutgoingConsent = () => {
+    setOutgoingConsentVisible(false);
+    setOutgoingConsentType(null);
+  };
+
+  const acceptOutgoingConsent = async () => {
+    const type = outgoingConsentType ?? 'audio';
+    setOutgoingConsentVisible(false);
+    setOutgoingConsentType(null);
+    await startCall(type);
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-white">
       <KeyboardAvoidingView
@@ -1228,19 +2003,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               <Image
                 source={{
                   uri: getProfileImage(
-                    otherUser || { profileImage: null, id: 0 },
+                    otherUserLive || { profileImage: null, id: 0 },
                   ),
                 }}
                 className="w-12 h-12 rounded-full mr-3"
               />
-              {otherUser?.isOnline && (
+              {otherUserLive?.isOnline && (
                 <View className="absolute right-3 bottom-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
               )}
             </View>
 
             <View className="flex-1">
               <Text className="text-lg font-bold">
-                {otherUser?.fullName || otherUser?.phoneNumber || 'Unknown'}
+                {otherUserLive?.fullName ||
+                  otherUserLive?.phoneNumber ||
+                  'Unknown'}
               </Text>
               <Text className="text-sm text-gray-500">{getLastSeenText()}</Text>
             </View>
@@ -1249,13 +2026,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           <View className="flex-row">
             <TouchableOpacity
               className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-2"
-              onPress={() => startCall('video')}
+              onPress={() => requestStartCall('video')}
             >
               <Video size={20} color="#000" />
             </TouchableOpacity>
             <TouchableOpacity
               className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
-              onPress={() => startCall('audio')}
+              onPress={() => requestStartCall('audio')}
             >
               <Phone size={20} color="#000" />
             </TouchableOpacity>
@@ -1273,18 +2050,85 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
           </View>
         )}
 
+        {(visiblePinnedMessages?.length ?? 0) > 0 && (
+          <TouchableOpacity
+            activeOpacity={0.88}
+            style={styles.pinnedBar}
+            onPress={() => setShowPinnedMessages(prev => !prev)}
+          >
+            <View style={styles.pinnedBarHeader}>
+              <View style={styles.pinnedBarTitleWrap}>
+                <Pin size={14} color="#42a7c3" />
+                <Text style={styles.pinnedBarTitle}>
+                  {visiblePinnedMessages?.length} pinned message
+                  {(visiblePinnedMessages?.length ?? 0) > 1 ? 's' : ''}
+                </Text>
+              </View>
+              {showPinnedMessages ? (
+                <ChevronUp size={18} color="#42a7c3" />
+              ) : (
+                <ChevronDown size={18} color="#42a7c3" />
+              )}
+            </View>
+
+            {(showPinnedMessages
+              ? visiblePinnedMessages
+              : visiblePinnedMessages?.slice?.(0, 1))?.map?.(pinnedMessage => (
+              <View
+                key={`pinned-${pinnedMessage?.id}`}
+                style={styles.pinnedPreviewRow}
+              >
+                <Text style={styles.pinnedPreviewName}>
+                  {pinnedMessage?.sender?.fullName || 'User'}:
+                </Text>
+                <Text
+                  numberOfLines={showPinnedMessages ? 2 : 1}
+                  style={styles.pinnedPreviewText}
+                >
+                  {formatPinnedPreview(pinnedMessage)}
+                </Text>
+              </View>
+            ))}
+          </TouchableOpacity>
+        )}
+
         {/* Messages */}
         <ScrollView
           ref={scrollViewRef}
           className="flex-1 px-4 py-4 mb-1"
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => {
+          onContentSizeChange={(_w, h) => {
+            if (isLoadingOlderRef.current) {
+              const delta = h - contentHeightRef.current;
+              contentHeightRef.current = h;
+              if (delta > 0) {
+                scrollOffsetRef.current += delta;
+                scrollViewRef.current?.scrollTo({
+                  y: scrollOffsetRef.current,
+                  animated: false,
+                });
+              }
+              return;
+            }
+            const prevHeight = contentHeightRef.current;
+            contentHeightRef.current = h;
             const phase = voiceUiPhaseRef.current;
             if (phase === 'recording' || phase === 'paused') {
               return;
             }
-            scrollToBottom();
+            const distanceFromBottom =
+              prevHeight - scrollOffsetRef.current - viewportHeightRef.current;
+            if (prevHeight === 0 || distanceFromBottom < 150) {
+              scrollToBottom();
+            }
           }}
+          onScroll={(e) => {
+            scrollOffsetRef.current = e?.nativeEvent?.contentOffset?.y ?? 0;
+          }}
+          onLayout={(e) => {
+            viewportHeightRef.current = e?.nativeEvent?.layout?.height ?? 0;
+          }}
+          scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
         >
           {loading && page === 1 ? (
@@ -1308,7 +2152,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                   )}
                 </TouchableOpacity>
               )}
-              {(messages?.length ?? 0) === 0 ? (
+              {(visibleMessages?.length ?? 0) === 0 ? (
                 <View className="flex-1 items-center justify-center py-12">
                   <Text className="text-[#092724] text-xl font-semibold">
                     No messages yet
@@ -1364,17 +2208,40 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                 : 0),
           }}
         >
+          {editingMessageId != null && (
+            <View style={styles.editBanner}>
+              <View style={styles.editBannerTextWrap}>
+                <Text style={styles.editBannerLabel}>Editing message</Text>
+                <Text numberOfLines={1} style={styles.editBannerPreview}>
+                  {editingOriginalContent?.trim?.() ?? ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.editBannerCloseButton}
+                onPress={() => cancelEditingMessage?.()}
+              >
+                <CloseIcon size={18} color="#42a7c3" />
+              </TouchableOpacity>
+            </View>
+          )}
+
           <ChatMessageBar
             value={newMessage}
             onChangeText={setNewMessage}
             onSend={handleSendFromBar}
             sending={sending}
             imageUploading={imageUploading}
-            onImagePress={handlePickImageForPreview}
+            onImagePress={
+              editingMessageId == null ? handlePickImageForPreview : undefined
+            }
             pendingImageUri={pendingImageAsset?.uri ?? null}
             onCancelImage={handleCancelPendingImage}
             onMicPress={handleMicPress}
-            micDisabled={sending || imageUploading}
+            micDisabled={sending || imageUploading || editingMessageId != null}
+            placeholder={
+              editingMessageId != null ? 'Edit your message' : 'Write your message'
+            }
             voiceMode={
               voiceUiPhase === 'preview'
                 ? 'preview'
@@ -1394,6 +2261,100 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
             scrollToBottom={scrollToBottom}
           />
         </View>
+
+        <OutgoingCallConsentModal
+          visible={outgoingConsentVisible}
+          callType={outgoingConsentType ?? 'audio'}
+          calleeName={
+            otherUserLive?.fullName?.trim?.() ||
+            otherUserLive?.phoneNumber?.trim?.() ||
+            otherUser?.fullName?.trim?.() ||
+            otherUser?.phoneNumber?.trim?.() ||
+            'Contact'
+          }
+          calleeProfileImage={
+            otherUserLive?.profileImage ?? otherUser?.profileImage ?? null
+          }
+          onAccept={acceptOutgoingConsent}
+          onDecline={declineOutgoingConsent}
+        />
+        <MessageActionSheet
+          visible={messageActionsVisible}
+          messagePreview={formatPinnedPreview(selectedMessage)}
+          canEdit={canEditMessage(selectedMessage)}
+          isPinned={isMessagePinnedByCurrentUser(selectedMessage)}
+          busy={messageActionsBusy}
+          onClose={() => closeMessageActions?.()}
+          onEdit={() => startEditingMessage?.(selectedMessage)}
+          onTogglePin={() => {
+            handleTogglePinForCurrentMessage?.()?.catch?.(() => {});
+          }}
+          onDelete={() => openDeleteDialog?.()}
+          onReact={emoji => {
+            handleReactToCurrentMessage?.(emoji)?.catch?.(() => {});
+          }}
+        />
+
+        <Modal
+          visible={deleteDialogVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => closeDeleteDialog?.()}
+        >
+          <View style={styles.dialogBackdrop}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={StyleSheet.absoluteFillObject}
+              onPress={() => closeDeleteDialog?.()}
+            />
+
+            <View style={styles.dialogCard}>
+              <Text style={styles.dialogTitle}>Delete message?</Text>
+              <Text style={styles.dialogSubtitle}>
+                Choose who should stop seeing this message.
+              </Text>
+
+              <TouchableOpacity
+                activeOpacity={0.88}
+                style={[styles.dialogButton, styles.dialogDangerButton]}
+                disabled={deleteDialogBusy}
+                onPress={() => {
+                  handleDeleteMessage?.('me')?.catch?.(() => {});
+                }}
+              >
+                <Text style={styles.dialogDangerText}>Delete for me</Text>
+              </TouchableOpacity>
+
+              {Number(selectedMessage?.sender?.id) === Number(currentUserId) && (
+                <TouchableOpacity
+                  activeOpacity={0.88}
+                  style={[styles.dialogButton, styles.dialogDangerButton]}
+                  disabled={deleteDialogBusy}
+                  onPress={() => {
+                    handleDeleteMessage?.('everyone')?.catch?.(() => {});
+                  }}
+                >
+                  <Text style={styles.dialogDangerText}>Delete for everyone</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                activeOpacity={0.88}
+                style={styles.dialogCancelButton}
+                disabled={deleteDialogBusy}
+                onPress={() => closeDeleteDialog?.()}
+              >
+                <Text style={styles.dialogCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              {deleteDialogBusy && (
+                <View style={styles.dialogLoadingRow}>
+                  <ActivityIndicator size="small" color="#5b2ec4" />
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
         {/* <SocketDebugOverlay chatId={chatId} /> */}
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1403,11 +2364,223 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 export default ChatScreen;
 
 const styles = StyleSheet.create({
+  messageListItem: {
+    width: '100%',
+    marginBottom: 16,
+  },
   chatImage: {
     width: 260,
     maxWidth: '100%',
     maxHeight: 320,
     backgroundColor: '#f3f4f6',
+  },
+  pinnedBar: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(66,167,195,0.08)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#42a7c3',
+  },
+  pinnedBarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pinnedBarTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pinnedBarTitle: {
+    marginLeft: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#42a7c3',
+  },
+  pinnedPreviewRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  pinnedPreviewName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4b5563',
+    marginRight: 4,
+  },
+  pinnedPreviewText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  reactionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  reactionRowMine: {
+    justifyContent: 'flex-end',
+    alignSelf: 'flex-end',
+  },
+  reactionRowOther: {
+    justifyContent: 'flex-start',
+    alignSelf: 'flex-start',
+  },
+  reactionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 8,
+    marginBottom: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.06)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  reactionPillActive: {
+    borderColor: '#42a7c3',
+    backgroundColor: 'rgba(66,167,195,0.12)',
+  },
+  reactionEmojiText: {
+    fontSize: 13,
+  },
+  reactionCountText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4b5563',
+  },
+  deletedBubbleContainer: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  deletedBubble: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(107, 114, 128, 0.45)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    maxWidth: 280,
+    backgroundColor: '#fff',
+  },
+  deletedBubbleMine: {
+    alignSelf: 'flex-end',
+  },
+  deletedBubbleOther: {
+    alignSelf: 'flex-start',
+  },
+  deletedBubbleText: {
+    color: '#6b7280',
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  editBanner: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(66,167,195,0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editBannerTextWrap: {
+    flex: 1,
+    marginRight: 12,
+  },
+  editBannerLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#42a7c3',
+  },
+  editBannerPreview: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#4b5563',
+  },
+  editBannerCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+  },
+  dialogBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.34)',
+    paddingHorizontal: 24,
+  },
+  dialogCard: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 24,
+    backgroundColor: '#fff',
+    padding: 20,
+  },
+  dialogTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  dialogSubtitle: {
+    marginTop: 8,
+    marginBottom: 16,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#6b7280',
+  },
+  dialogButton: {
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  dialogButtonText: {
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  dialogDangerButton: {
+    backgroundColor: '#fef2f2',
+  },
+  dialogDangerText: {
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#dc2626',
+  },
+  dialogDisabledButton: {
+    backgroundColor: '#f3f4f6',
+  },
+  dialogDisabledText: {
+    color: '#9ca3af',
+  },
+  dialogCancelButton: {
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  dialogCancelText: {
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  dialogLoadingRow: {
+    alignItems: 'center',
+    paddingTop: 6,
   },
   viewerBackdrop: {
     flex: 1,

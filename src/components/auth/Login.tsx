@@ -23,6 +23,7 @@ import useUsersService from '../../services/user';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../../store';
 import {
+  setAuthenticated,
   setCurrentStep,
   setForceCompleteProfile,
   setUpdateAppUser,
@@ -95,6 +96,7 @@ export default function LoginComponent() {
       });
       if (response) {
         await saveTokens(response.accessToken, response.refreshToken);
+        dispatch(setAuthenticated(true));
 
         Toast.show({
           type: 'success',
